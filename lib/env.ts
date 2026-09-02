@@ -7,6 +7,11 @@ const envSchema = z
     SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
     DATABASE_URL: z.string().optional().default('canviagram.db'),
     NODE_ENV: z.enum(['development', 'test', 'production']).optional().default('development'),
+    AI_API_KEY: z.string().optional(),
+    AI_BASE_URL: z.string().url().optional().default('https://openrouter.ai/api/v1'),
+    AI_MODEL: z.string().min(1).optional().default('anthropic/claude-3.5-sonnet'),
+    TELEGRAM_BOT_TOKEN: z.string().optional(),
+    TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production' && data.DATABASE_URL) {
@@ -69,10 +74,18 @@ function parseEnv() {
     process.env.SESSION_SECRET = 'test-secret-32-chars-long-xxxxxxxxxxxxxxxxxxxxxxxx'
   }
 
+  // Fallback genérico: AI_API_KEY ?? ANTHROPIC_API_KEY (compat 1 sprint)
+  const aiApiKey = process.env.AI_API_KEY ?? process.env.ANTHROPIC_API_KEY
+
   const raw = {
     SESSION_SECRET: process.env.SESSION_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV as string | undefined,
+    AI_API_KEY: aiApiKey,
+    AI_BASE_URL: process.env.AI_BASE_URL,
+    AI_MODEL: process.env.AI_MODEL,
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
   }
 
   const result = envSchema.safeParse(raw)

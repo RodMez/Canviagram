@@ -30,6 +30,12 @@ DB_PATH=$(echo "$DB_PATH" | cut -d'?' -f1)
 DB_DIR=$(dirname "$DB_PATH")
 mkdir -p "$DB_DIR"
 
+if [ -z "$AI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+  echo "[entrypoint] WARN: AI_API_KEY not set — IA deshabilitada (canvas funciona sin IA)" >&2
+else
+  echo "[entrypoint] AI provider: ${AI_BASE_URL:-https://openrouter.ai/api/v1} model=${AI_MODEL:-anthropic/claude-3.5-sonnet}"
+fi
+
 echo "[entrypoint] Running database migrations..."
 node ./scripts/migrate.mjs
 
