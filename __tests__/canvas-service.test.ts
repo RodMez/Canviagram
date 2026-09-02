@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import { v4 as uuidv4 } from 'uuid'
 import { db } from '@/lib/db'
-import { users, workspaces, nodes, edges } from '@/lib/db/schema'
+import { users, workspaces, nodes, edges, workspaceMembers } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import * as canvasService from '@/lib/canvas-service'
 import * as pubsub from '@/lib/sse/pubsub'
@@ -36,6 +36,14 @@ describe('canvas-service', () => {
       slug: `test-ws-${testWorkspaceId.slice(0, 8)}`,
     })
 
+    // Membership para owner (aunque owner ya tiene acceso, añadimos por consistencia)
+    await db.insert(workspaceMembers).values({
+      id: uuidv4(),
+      workspaceId: testWorkspaceId,
+      userId: testUserId,
+      role: 'owner',
+    })
+
     pubsub._clearAll()
   })
 
@@ -49,6 +57,7 @@ describe('canvas-service', () => {
   afterAll(async () => {
     await db.delete(edges).where(eq(edges.workspaceId, testWorkspaceId))
     await db.delete(nodes).where(eq(nodes.workspaceId, testWorkspaceId))
+    await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, testWorkspaceId))
     await db.delete(workspaces).where(eq(workspaces.id, testWorkspaceId))
     await db.delete(users).where(eq(users.id, testUserId))
     await db.delete(users).where(eq(users.id, testUserId2))
@@ -64,9 +73,25 @@ describe('canvas-service', () => {
     expect(node.title).toBe('Proyecto Test')
     expect(node.type).toBe('project')
 
-    const list = await canvasService.listNodes(testWorkspaceId)
+    const list = await canvasService.listNodes(testWorkspaceId, testUserId)
     expect(list.length).toBe(1)
     expect(list[0].id).toBe(node.id)
+  })
+
+  it('listNodes con limit/offset - paginación', async () => {
+    for (let i = 0; i < 5; i++) {
+      await canvasService.createNode(testWorkspaceId, testUserId, {
+        type: 'note',
+        title: `Nota ${i}`,
+      })
+    }
+    const first2 = await canvasService.listNodes(testWorkspaceId, testUserId, { limit: 2, offset: 0 })
+    expect(first2.length).toBe(2)
+    const next2 = await canvasService.listNodes(testWorkspaceId, testUserId, { limit: 2, offset: 2 })
+    expect(next2.length).toBe(2)
+    // limit se clamp a 100 max, default 50
+    const defaultLimit = await canvasService.listNodes(testWorkspaceId, testUserId)
+    expect(defaultLimit.length).toBe(5)
   })
 
   it('softDelete filtra - listNodes excluye borrados', async () => {
@@ -75,21 +100,47 @@ describe('canvas-service', () => {
       title: 'Nota a borrar',
     })
 
-    let list = await canvasService.listNodes(testWorkspaceId)
+    let list = await canvasService.listNodes(testWorkspaceId, testUserId)
     expect(list.length).toBe(1)
 
     await canvasService.softDeleteNode(testWorkspaceId, node.id, testUserId)
 
-    list = await canvasService.listNodes(testWorkspaceId)
+    list = await canvasService.listNodes(testWorkspaceId, testUserId)
     expect(list.length).toBe(0)
 
     // getNodeById debe lanzar NotFoundError después de soft delete
-    await expect(canvasService.getNodeById(testWorkspaceId, node.id)).rejects.toThrow()
+    await expect(canvasService.getNodeById(testWorkspaceId, node.id, testUserId)).rejects.toThrow()
     try {
-      await canvasService.getNodeById(testWorkspaceId, node.id)
+      await canvasService.getNodeById(testWorkspaceId, node.id, testUserId)
     } catch (e) {
       expect((e as Error).name).toBe('NotFoundError')
     }
+  })
+
+  it('softDelete - borra edges huérfanos transaccionalmente', async () => {
+    const n1 = await canvasService.createNode(testWorkspaceId, testUserId, {
+      type: 'task',
+      title: 'N1',
+    })
+    const n2 = await canvasService.createNode(testWorkspaceId, testUserId, {
+      type: 'task',
+      title: 'N2',
+    })
+    const edge = await canvasService.createEdge(testWorkspaceId, testUserId, {
+      sourceId: n1.id,
+      targetId: n2.id,
+      type: 'related_to',
+    })
+    expect(edge).toBeDefined()
+
+    let edgesList = await canvasService.listEdges(testWorkspaceId, testUserId)
+    expect(edgesList.length).toBe(1)
+
+    await canvasService.softDeleteNode(testWorkspaceId, n1.id, testUserId)
+
+    edgesList = await canvasService.listEdges(testWorkspaceId, testUserId)
+    // El edge donde source == n1.id debe haber sido borrado por la transacción
+    expect(edgesList.length).toBe(0)
   })
 
   it('softDelete - solo borra si pertenece al workspace', async () => {
@@ -103,7 +154,7 @@ describe('canvas-service', () => {
   })
 
   it('getNodeById lanza NotFound si no existe', async () => {
-    await expect(canvasService.getNodeById(testWorkspaceId, 'id-inexistente')).rejects.toThrow()
+    await expect(canvasService.getNodeById(testWorkspaceId, 'id-inexistente', testUserId)).rejects.toThrow()
   })
 
   it('edge self-loop debe fallar en validación', async () => {
@@ -152,8 +203,18 @@ describe('canvas-service', () => {
     expect(edge.sourceId).toBe(n1.id)
     expect(edge.targetId).toBe(n2.id)
 
-    const allEdges = await canvasService.listEdges(testWorkspaceId)
+    const allEdges = await canvasService.listEdges(testWorkspaceId, testUserId)
     expect(allEdges.length).toBe(1)
+  })
+
+  it('createEdge valida source/target dentro de transacción - nodos no existen', async () => {
+    await expect(
+      canvasService.createEdge(testWorkspaceId, testUserId, {
+        sourceId: 'id-falso-source',
+        targetId: 'id-falso-target',
+        type: 'related_to',
+      })
+    ).rejects.toThrow()
   })
 
   it('updateEdge self-loop debe fallar', async () => {
@@ -196,7 +257,7 @@ describe('canvas-service', () => {
     })
 
     await canvasService.deleteEdge(testWorkspaceId, edge.id, testUserId)
-    const list = await canvasService.listEdges(testWorkspaceId)
+    const list = await canvasService.listEdges(testWorkspaceId, testUserId)
     expect(list.length).toBe(0)
   })
 
@@ -232,7 +293,7 @@ describe('canvas-service', () => {
     expect(chunks.length).toBe(before)
   })
 
-  it('getWorkspaceGraph retorna nodos y edges filtrados', async () => {
+  it('getWorkspaceGraph retorna nodos y edges filtrados - edges huérfanos no retornados', async () => {
     const n1 = await canvasService.createNode(testWorkspaceId, testUserId, {
       type: 'project',
       title: 'Proj',
@@ -247,17 +308,25 @@ describe('canvas-service', () => {
       type: 'related_to',
     })
 
-    // Borrar un nodo y verificar que no aparece en graph
+    // Borrar un nodo y verificar que no aparece en graph y su edge tampoco
     const n3 = await canvasService.createNode(testWorkspaceId, testUserId, {
       type: 'note',
       title: 'Borrar',
     })
+    // Crear edge entre n3 y n1, luego borrar n3 -> edge debe filtrarse
+    await canvasService.createEdge(testWorkspaceId, testUserId, {
+      sourceId: n3.id,
+      targetId: n1.id,
+      type: 'related_to',
+    })
+
     await canvasService.softDeleteNode(testWorkspaceId, n3.id, testUserId)
 
-    const graph = await canvasService.getWorkspaceGraph(testWorkspaceId)
+    const graph = await canvasService.getWorkspaceGraph(testWorkspaceId, testUserId)
     expect(graph.nodes.length).toBe(2)
     expect(graph.edges.length).toBe(1)
     expect(graph.nodes.find((n) => n.id === n3.id)).toBeUndefined()
+    expect(graph.edges.find((e) => e.sourceId === n3.id || e.targetId === n3.id)).toBeUndefined()
   })
 
   it('updateNode - status solo si task', async () => {
@@ -284,5 +353,22 @@ describe('canvas-service', () => {
     })
     expect(updated.status).toBe('done')
     expect(updated.title).toBe('Tarea actualizada')
+  })
+
+  it('trim fix - título con solo espacios debe fallar validación', async () => {
+    await expect(
+      canvasService.createNode(testWorkspaceId, testUserId, {
+        type: 'note',
+        title: '   ',
+      })
+    ).rejects.toThrow()
+    expect((await canvasService.listNodes(testWorkspaceId, testUserId)).length).toBe(0)
+
+    // título con espacios alrededor debe trimearse y pasar
+    const node = await canvasService.createNode(testWorkspaceId, testUserId, {
+      type: 'note',
+      title: '  Hola mundo  ',
+    })
+    expect(node.title).toBe('Hola mundo')
   })
 })

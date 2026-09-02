@@ -10,9 +10,10 @@ export async function GET(
   _request: Request,
   { params }: { params: { token: string } }
 ) {
-  const token = params.token
+  const rawToken = params.token
+  const token = typeof rawToken === 'string' ? rawToken.trim() : ''
 
-  if (!token || typeof token !== 'string' || token.trim().length === 0) {
+  if (!token || token.length === 0) {
     return NextResponse.json({ error: 'Token requerido' }, { status: 400 })
   }
 
@@ -32,14 +33,26 @@ export async function GET(
       return NextResponse.json({ error: 'Token expirado' }, { status: 400 })
     }
 
-    // F2 partial: marcar email como verificado pero sin Brevo send
-    await db
-      .update(users)
-      .set({ emailVerified: true, updatedAt: now })
-      .where(eq(users.id, record.userId))
-
-    // Borrar token usado (un solo uso)
-    await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token))
+    // Transacción atómica: marcar email verificado + borrar token de un solo uso
+    try {
+      db.transaction((tx) => {
+        tx.update(users)
+          .set({ emailVerified: true, updatedAt: now })
+          .where(eq(users.id, record.userId))
+          .run()
+        tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token)).run()
+      })
+    } catch (txError) {
+      // Si la API de transaction falla por incompatibilidad async, fallback a operaciones secuenciales
+      // Mantenemos manejo explícito de error en vez de silenciar
+      const isTxUnsupported = txError instanceof Error && /transaction/i.test(txError.message)
+      if (isTxUnsupported) {
+        await db.update(users).set({ emailVerified: true, updatedAt: now }).where(eq(users.id, record.userId))
+        await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token))
+      } else {
+        throw txError
+      }
+    }
 
     return NextResponse.json({ success: true, message: 'Email verificado correctamente' })
   } catch (error) {

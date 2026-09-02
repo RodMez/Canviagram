@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
+import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
 import { updateEdge, deleteEdge, ValidationError, NotFoundError, ForbiddenError } from '@/lib/canvas-service'
 
 export async function PATCH(
@@ -15,6 +16,8 @@ export async function PATCH(
   }
 
   try {
+    await assertWorkspaceAccess(params.id, session.userId, 'member')
+
     const body = await request.json().catch(() => null)
     if (!body) {
       return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 })
@@ -47,6 +50,8 @@ export async function DELETE(
   }
 
   try {
+    await assertWorkspaceAccess(params.id, session.userId, 'member')
+
     const deleted = await deleteEdge(params.id, params.edgeId, session.userId)
     return NextResponse.json(deleted)
   } catch (error) {

@@ -11,12 +11,40 @@ const channels = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>
 
 const encoder = new TextEncoder()
 
+export const MAX_SUBSCRIBERS_PER_WORKSPACE = 100
+export const MAX_WORKSPACES = 1000
+
 export function subscribe(workspaceId: string, controller: ReadableStreamDefaultController<Uint8Array>): void {
+  // Límite global de workspaces con subscribers activos
+  if (!channels.has(workspaceId) && channels.size >= MAX_WORKSPACES) {
+    console.warn(`[pubsub] MAX_WORKSPACES (${MAX_WORKSPACES}) excedido. Rechazando subscribe para ${workspaceId}`)
+    try {
+      controller.close()
+    } catch {
+      // ignorar error al cerrar
+    }
+    return
+  }
+
   let set = channels.get(workspaceId)
   if (!set) {
     set = new Set()
     channels.set(workspaceId, set)
   }
+
+  // Límite por workspace
+  if (set.size >= MAX_SUBSCRIBERS_PER_WORKSPACE) {
+    console.warn(
+      `[pubsub] MAX_SUBSCRIBERS_PER_WORKSPACE (${MAX_SUBSCRIBERS_PER_WORKSPACE}) excedido para workspace ${workspaceId}`
+    )
+    try {
+      controller.close()
+    } catch {
+      // ignorar
+    }
+    return
+  }
+
   set.add(controller)
 }
 

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
+import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
 import { updateNode, softDeleteNode, ValidationError, NotFoundError, ForbiddenError } from '@/lib/canvas-service'
 
 export async function PATCH(
@@ -15,6 +16,10 @@ export async function PATCH(
   }
 
   try {
+    // Defensa en profundidad: verificación explícita de acceso antes de mutar
+    // canvas-service también verifica internamente; mantenemos doble capa
+    await assertWorkspaceAccess(params.id, session.userId, 'member')
+
     const body = await request.json().catch(() => null)
     if (!body) {
       return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 })
@@ -47,6 +52,8 @@ export async function DELETE(
   }
 
   try {
+    await assertWorkspaceAccess(params.id, session.userId, 'member')
+
     const deleted = await softDeleteNode(params.id, params.nodeId, session.userId)
     return NextResponse.json(deleted)
   } catch (error) {

@@ -8,11 +8,12 @@ export const createNodeSchema = z
     }),
     title: z
       .string()
+      .trim()
       .min(1, 'El título es requerido')
-      .max(200, 'El título no puede exceder 200 caracteres')
-      .trim(),
+      .max(200, 'El título no puede exceder 200 caracteres'),
     content: z
       .string()
+      .trim()
       .max(5000, 'El contenido no puede exceder 5000 caracteres')
       .optional()
       .nullable(),
@@ -44,12 +45,13 @@ export const updateNodeSchema = z
       .optional(),
     title: z
       .string()
+      .trim()
       .min(1, 'El título es requerido')
       .max(200, 'El título no puede exceder 200 caracteres')
-      .trim()
       .optional(),
     content: z
       .string()
+      .trim()
       .max(5000, 'El contenido no puede exceder 5000 caracteres')
       .optional()
       .nullable(),
