@@ -39,5 +39,10 @@ fi
 echo "[entrypoint] Running database migrations..."
 node ./scripts/migrate.mjs
 
+if [ -n "$TELEGRAM_WEBHOOK_URL" ]; then
+  echo "[entrypoint] Setting Telegram webhook: $TELEGRAM_WEBHOOK_URL"
+  node ./scripts/set-telegram-webhook.mjs --url "$TELEGRAM_WEBHOOK_URL" || echo "[entrypoint] WARN: webhook no configurado (reintenta tras arrancar)" >&2
+fi
+
 echo "[entrypoint] Starting application..."
 exec "$@"
