@@ -34,3 +34,41 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+
+## Telegram bot (dev)
+
+El bot de Telegram (F4.2) recibe updates vía webhook en `POST /api/telegram/webhook` (público por diseño, autenticado con el header `x-telegram-bot-api-secret-token`).
+
+### 1. Configuración
+
+En `.env.local`:
+
+```
+TELEGRAM_BOT_TOKEN=<token de @BotFather>
+TELEGRAM_WEBHOOK_SECRET=<secreto aleatorio largo>
+```
+
+### 2. Exponer el servidor local
+
+```bash
+npx ngrok http 3000
+# copia la URL https://xxxx.ngrok-free.app
+```
+
+### 3. Registrar el webhook
+
+```bash
+npm run telegram:set-webhook -- --url https://xxxx.ngrok-free.app/api/telegram/webhook
+# opcional: --info para ver el estado, --delete para quitarlo
+```
+
+### 4. Probar
+
+```bash
+curl -X POST https://xxxx.ngrok-free.app/api/telegram/webhook \
+  -H "x-telegram-bot-api-secret-token: <TELEGRAM_WEBHOOK_SECRET>" \
+  -H "content-type: application/json" \
+  -d '{"update_id":1,"message":{"message_id":1,"date":0,"chat":{"id":111,"type":"private","first_name":"T"},"from":{"id":222,"is_bot":false,"first_name":"T"},"text":"/start"}}'
+```
+
+Flujo completo: genera un código en Ajustes → Telegram (endpoint `POST /api/workspaces/:id/telegram/link`), envíalo al bot con `/link <código>` y luego manda un mensaje normal para crear nodos con IA.
