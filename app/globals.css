@@ -21,3 +21,26 @@
     text-wrap: balance;
   }
 }
+
+/* ============================================================
+   Integración React Flow (Diseño 7)
+   Importado al final para que los estilos base de RF no compitan
+   con las utilities de Tailwind; overrides mínimos con tokens.
+   ============================================================ */
+@import '@xyflow/react/dist/style.css';
+
+.react-flow__node {
+  font-family: inherit;
+}
+
+.react-flow__node:hover {
+  background-color: var(--muted);
+}
+
+.react-flow__handle {
+  background-color: var(--border);
+}
+
+.react-flow__edge-path {
+  stroke: var(--muted-foreground);
+}
