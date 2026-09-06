@@ -1,37 +1,30 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
+const EXCLUDED_EXACT = new Set(['/', '/login', '/register', '/api/ai/chat-demo'])
+const EXCLUDED_PREFIX = ['/api/auth/', '/api/health', '/_next/', '/favicon.ico']
+
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
-
-  // Verificar presencia de cookie de sesión (no valida firma aquí, solo presencia)
-  const hasHostSession = request.cookies.has('__Host-session')
-  const hasLegacy = request.cookies.has('session')
-  const isAuthenticated = hasHostSession || hasLegacy
-
+  if (EXCLUDED_EXACT.has(pathname)) return NextResponse.next()
+  if (EXCLUDED_PREFIX.some((p) => pathname.startsWith(p))) return NextResponse.next()
+  if (pathname.startsWith('/verify-email')) return NextResponse.next()
+  const isProtected =
+    pathname.startsWith('/w/') ||
+    pathname.startsWith('/workspaces') ||
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/api/workspaces/') ||
+    pathname.startsWith('/api/ai/')
+  if (!isProtected) return NextResponse.next()
+  const isAuthenticated = request.cookies.has('__Host-session')
   if (!isAuthenticated) {
-    const isApi = pathname.startsWith('/api/')
-    if (isApi) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
-    // Para rutas de página protegidas, redirigir a /login con next param
+    if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     const loginUrl = new URL('/login', request.url)
-    // Evitar redirect loop si ya está en /login o /register
-    if (pathname !== '/login' && pathname !== '/register') {
-      loginUrl.searchParams.set('next', pathname)
-    }
+    loginUrl.searchParams.set('next', pathname + request.nextUrl.search)
     return NextResponse.redirect(loginUrl)
   }
-
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: [
-    '/api/workspaces/:path*',
-    '/api/ai/:path*',
-    '/api/telegram/:path*',
-    '/w/:path*',
-    '/workspaces/:path*',
-    '/settings/:path*',
-  ],
+  matcher: ['/w/:path*', '/workspaces/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*'],
 }
