@@ -4,6 +4,8 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { sessions } from '@/lib/db/schema'
 import { env } from '@/lib/env'
+import { v4 as uuidv4 } from 'uuid'
+import { NextResponse } from 'next/server'
 
 export type Session = {
   userId: string
@@ -124,13 +126,14 @@ export async function getSession(): Promise<Session | null> {
             if (record.expiresAt.getTime() < Date.now()) return null
             if (record.userId !== userId) return null
             return { userId: record.userId, token, expiresAt: record.expiresAt }
+          } else {
+            // En producción exigir registro DB; en test permitir stateless solo si ALLOW_STATELESS_SESSION=1
+            if (env.NODE_ENV === 'production') return null
+            if (process.env.ALLOW_STATELESS_SESSION === '1') return { userId, token, expiresAt }
+            return null
           }
-          // Si no hay registro en DB pero firma y expiración de payload son válidas, aceptamos stateless
-          // Esto permite sesiones sin DB (útil en tests) mientras mantiene HMAC
-          return { userId, token, expiresAt }
         } catch {
-          // Si falla DB (ej. en tests sin tabla), fallback a payload verificado
-          return { userId, token, expiresAt }
+          return null
         }
       } else {
         // Firma inválida en __Host-session -> denegar
@@ -153,4 +156,91 @@ export async function requireSession(): Promise<Session | null> {
     return null
   }
   return session
+}
+
+// ============================================================
+// F2.1 — Nuevas funciones para Auth Backend
+// Mantener compatibilidad con sign/verifySignature/buildSessionCookieValue/
+// parseAndVerifyCookieValue/getSession existentes.
+// ============================================================
+
+export type CreateSessionParams = {
+  userId: string
+  ip?: string | null
+  ua?: string | null
+}
+
+/**
+ * Crea sesión persistente en DB:
+ * token=uuidv4(), expiresAt=+7d, tokenHash=sign(token) HMAC,
+ * insert sessions {id:uuid, userId, tokenHash, expiresAt, ipAddress, userAgent, createdAt}
+ */
+export async function createSession(params: CreateSessionParams): Promise<{ token: string; session: typeof sessions.$inferSelect; expiresAt: Date }> {
+  const token = uuidv4()
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  const tokenHash = sign(token)
+  const id = uuidv4()
+  const now = new Date()
+
+  const row = {
+    id,
+    userId: params.userId,
+    tokenHash,
+    expiresAt,
+    ipAddress: params.ip?.slice(0, 45) ?? null,
+    userAgent: params.ua?.slice(0, 512) ?? null,
+    createdAt: now,
+  }
+
+  await db.insert(sessions).values(row)
+
+  // Recuperar para tipado exacto (drizzle devuelve Date objects correctamente)
+  const inserted = (await db.select().from(sessions).where(eq(sessions.tokenHash, tokenHash)).get()) as typeof sessions.$inferSelect
+
+  return {
+    token,
+    session: inserted ?? (row as typeof sessions.$inferSelect),
+    expiresAt,
+  }
+}
+
+/**
+ * Destruye sesión por token plano: delete where tokenHash=sign(token)
+ */
+export async function destroySession(token: string): Promise<void> {
+  if (!token) return
+  const tokenHash = sign(token)
+  await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash))
+}
+
+/**
+ * Setea cookie de sesión vía next/headers cookies() — para Server Actions / Route Handlers que usan cookies()
+ */
+export function setSessionCookie(userId: string, token: string, expiresAt: Date): void {
+  const value = buildSessionCookieValue(userId, token, expiresAt)
+  const store = cookies() as unknown as { set: (name: string, value: string, opts: Record<string, unknown>) => void }
+  store.set(SESSION_COOKIE_NAME, value, { ...SESSION_COOKIE_OPTIONS, expires: expiresAt })
+}
+
+/**
+ * Limpia cookie de sesión vía next/headers cookies()
+ */
+export function clearSessionCookie(): void {
+  const store = cookies() as unknown as { set: (name: string, value: string, opts: Record<string, unknown>) => void }
+  store.set(SESSION_COOKIE_NAME, '', { ...SESSION_COOKIE_OPTIONS, expires: new Date(0), maxAge: 0 })
+}
+
+/**
+ * Setea cookie de sesión en NextResponse — para Route Handlers (preferido en app/api)
+ */
+export function setSessionCookieOnResponse(res: NextResponse, userId: string, token: string, expiresAt: Date): void {
+  const value = buildSessionCookieValue(userId, token, expiresAt)
+  res.cookies.set(SESSION_COOKIE_NAME, value, { ...SESSION_COOKIE_OPTIONS, expires: expiresAt })
+}
+
+/**
+ * Limpia cookie de sesión en NextResponse — para Route Handlers
+ */
+export function clearSessionCookieOnResponse(res: NextResponse): void {
+  res.cookies.set(SESSION_COOKIE_NAME, '', { ...SESSION_COOKIE_OPTIONS, expires: new Date(0), maxAge: 0 })
 }

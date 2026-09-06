@@ -9,9 +9,13 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).optional().default('development'),
     AI_API_KEY: z.string().optional(),
     AI_BASE_URL: z.string().url().optional().default('https://openrouter.ai/api/v1'),
-    AI_MODEL: z.string().min(1).optional().default('anthropic/claude-3.5-sonnet'),
+    AI_MODEL: z.string().min(1).optional().default('openrouter/free'),
     TELEGRAM_BOT_TOKEN: z.string().optional(),
     TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+    BREVO_API_KEY: z.string().optional(),
+    EMAIL_FROM: z.string().email().optional(),
+    BREVO_SENDER_EMAIL: z.string().email().optional(),
+    NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production' && data.DATABASE_URL) {
@@ -86,6 +90,10 @@ function parseEnv() {
     AI_MODEL: process.env.AI_MODEL,
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
     TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    BREVO_API_KEY: process.env.BREVO_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM ?? process.env.BREVO_SENDER_EMAIL,
+    BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   }
 
   const result = envSchema.safeParse(raw)
