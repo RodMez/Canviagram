@@ -33,7 +33,7 @@ mkdir -p "$DB_DIR"
 if [ -z "$AI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
   echo "[entrypoint] WARN: AI_API_KEY not set — IA deshabilitada (canvas funciona sin IA)" >&2
 else
-  echo "[entrypoint] AI provider: ${AI_BASE_URL:-https://openrouter.ai/api/v1} model=${AI_MODEL:-anthropic/claude-3.5-sonnet}"
+  echo "[entrypoint] AI provider: ${AI_BASE_URL:-https://openrouter.ai/api/v1} model=${AI_MODEL:-openrouter/free}"
 fi
 
 echo "[entrypoint] Running database migrations..."

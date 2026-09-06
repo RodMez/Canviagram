@@ -27,7 +27,7 @@ ENV SESSION_SECRET=dummy_secret_32_chars_long_xxxxxxxxxxxxxxxxxxxxxxxx
 ENV DATABASE_URL=file:/tmp/build.db
 ENV AI_API_KEY=dummy_ai_key_for_build
 ENV AI_BASE_URL=https://openrouter.ai/api/v1
-ENV AI_MODEL=anthropic/claude-3.5-sonnet
+ENV AI_MODEL=openrouter/free
 RUN npm run build
 
 FROM base AS runner
@@ -38,7 +38,7 @@ ENV DATABASE_URL=/data/canviagram.db
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV AI_BASE_URL=https://openrouter.ai/api/v1
-ENV AI_MODEL=anthropic/claude-3.5-sonnet
+ENV AI_MODEL=openrouter/free
 
 RUN mkdir -p /data && chown nextjs:nodejs /data
 
