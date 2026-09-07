@@ -73,8 +73,6 @@ const telegramParseSchema = z.object({
       title: z.string().min(1).max(200),
       content: z.string().max(5000).nullish(),
       status: z.enum(NODE_STATUSES).nullish(),
-      positionX: z.number().finite().optional(),
-      positionY: z.number().finite().optional(),
     })
     .nullish(),
   reply: z.string().max(2000).nullish(),
@@ -111,7 +109,7 @@ ${edgeSummary || '(ninguna)'}
 ## Reglas
 - Decide si el mensaje intenta crear un nodo en el canvas. Si sí: shouldCreate=true y
   rellena node con type (project|task|note|idea|person|resource), title, content opcional,
-  status SOLO si type=task. Asigna positionX/Y razonables respecto a la estructura existente.
+  status SOLO si type=task. La posición la asigna el sistema: NO la generes ni la pidas.
 - Si es saludo, pregunta o tema fuera del canvas: shouldCreate=false y un reply corto.
 - No inventes IDs de nodos ni menciones datos de otros workspaces.
 - Responde en español unless the user writes in English.`

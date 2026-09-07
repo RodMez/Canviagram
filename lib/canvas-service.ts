@@ -1,12 +1,13 @@
 ﻿import { db } from '@/lib/db'
 import { nodes, edges } from '@/lib/db/schema'
-import { eq, and, isNull, or, asc } from 'drizzle-orm'
+import { eq, and, isNull, or, asc, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { createNodeSchema, updateNodeSchema } from '@/lib/validators/node'
 import { createEdgeSchema, updateEdgeSchema } from '@/lib/validators/edge'
 import { publish } from '@/lib/sse/pubsub'
 import { assertWorkspaceAccess, assertCanWrite } from '@/lib/auth/workspace-access'
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '@/lib/errors'
+import { positionForIndex } from '@/lib/canvas/layout'
 
 // Re-export errors for compatibility with routes importing from canvas-service
 export { ValidationError, NotFoundError, ForbiddenError, ConflictError }
@@ -52,6 +53,15 @@ export async function createNode(workspaceId: string, userId: string, input: unk
   const id = uuidv4()
   const now = new Date()
 
+  // Auto-layout (diseño 7): el servidor asigna la posición en grilla según el
+  // conteo de nodos vivos actual. Entradas positionX/Y se IGNORAN deliberadamente.
+  const countRow = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(nodes)
+    .where(and(eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
+    .get()
+  const slot = positionForIndex(Number(countRow?.count ?? 0))
+
   const [inserted] = await db
     .insert(nodes)
     .values({
@@ -62,8 +72,8 @@ export async function createNode(workspaceId: string, userId: string, input: unk
       title: parsed!.title,
       content: parsed!.content ?? null,
       status: parsed!.status ?? null,
-      positionX: parsed!.positionX ?? 0,
-      positionY: parsed!.positionY ?? 0,
+      positionX: slot.x,
+      positionY: slot.y,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,

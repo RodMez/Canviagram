@@ -131,7 +131,7 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
     const opts = { toolCallId: 'call-1', messages: [], context: {} }
 
     const result = await tools.createNode.execute!(
-      { type: 'task', title: 'Publicar post', status: 'todo', positionX: 5, positionY: 5 },
+      { type: 'task', title: 'Publicar post', status: 'todo' },
       opts
     )
     expect(result).toMatchObject({ type: 'task', title: 'Publicar post', status: 'todo' })

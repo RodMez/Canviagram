@@ -18,14 +18,12 @@ export function buildTools(ctx: ToolContext) {
   return {
     createNode: tool({
       description:
-        'Crea un nodo nuevo en el canvas. Tipos válidos: project, task, note, idea, person, resource. Solo tasks pueden tener status (todo, in_progress, done).',
+        'Crea un nodo nuevo en el canvas. Tipos válidos: project, task, note, idea, person, resource. Solo tasks pueden tener status (todo, in_progress, done). La posición en el canvas la asigna el sistema automáticamente.',
       inputSchema: z.object({
         type: z.enum(['project', 'task', 'note', 'idea', 'person', 'resource']),
         title: z.string().min(1).max(200),
         content: z.string().max(5000).optional().nullable(),
         status: z.enum(['todo', 'in_progress', 'done']).optional().nullable(),
-        positionX: z.number().finite().optional(),
-        positionY: z.number().finite().optional(),
       }),
       execute: async (input) => {
         const node = await canvasService.createNode(ctx.workspaceId, ctx.userId, input)
@@ -34,15 +32,13 @@ export function buildTools(ctx: ToolContext) {
     }),
 
     updateNode: tool({
-      description: 'Actualiza un nodo existente por ID',
+      description: 'Actualiza un nodo existente por ID (título, contenido, tipo o estado; nunca la posición)',
       inputSchema: z.object({
         nodeId: z.string().min(1),
         type: z.enum(['project', 'task', 'note', 'idea', 'person', 'resource']).optional(),
         title: z.string().min(1).max(200).optional(),
         content: z.string().max(5000).optional().nullable(),
         status: z.enum(['todo', 'in_progress', 'done']).optional().nullable(),
-        positionX: z.number().finite().optional(),
-        positionY: z.number().finite().optional(),
       }),
       execute: async ({ nodeId, ...rest }) => {
         const node = await canvasService.updateNode(ctx.workspaceId, nodeId, ctx.userId, rest)
