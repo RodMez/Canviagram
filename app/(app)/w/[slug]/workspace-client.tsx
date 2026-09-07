@@ -20,6 +20,8 @@ type WorkspaceClientProps = {
   workspaceName: string
   userId: string
   role: string
+  userName: string | null
+  userEmail: string | null
 }
 
 export default function WorkspaceClient({
@@ -27,6 +29,8 @@ export default function WorkspaceClient({
   workspaceName,
   userId,
   role,
+  userName,
+  userEmail,
 }: WorkspaceClientProps) {
   const loadGraph = useCanvasStore((s) => s.loadGraph)
   const [sseEnabled, setSseEnabled] = useState(false)
@@ -70,7 +74,12 @@ export default function WorkspaceClient({
   return (
     <div className="flex h-full flex-1 flex-col">
       {/* Toolbar (F3.4d): global del área autenticada, arriba del canvas (PLAN.md §6). */}
-      <Toolbar workspaceName={workspaceName} onCreateNode={handleCreateNode} />
+      <Toolbar
+        workspaceName={workspaceName}
+        onCreateNode={handleCreateNode}
+        userName={userName}
+        userEmail={userEmail}
+      />
       <div className="flex flex-1 overflow-hidden">
         <Canvas
           workspaceId={workspaceId}

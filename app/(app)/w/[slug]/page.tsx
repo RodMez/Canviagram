@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
+import { getUserProfile } from '@/lib/auth/user-profile'
 import { resolveWorkspaceBySlug } from '@/lib/canvas/workspace-by-slug'
 import { ForbiddenError } from '@/lib/errors'
 import WorkspaceClient from './workspace-client'
@@ -31,6 +32,9 @@ export default async function WorkspacePage({
     throw error
   }
 
+  // Perfil del usuario para el menú del Toolbar (avatar real, no el del workspace).
+  const profile = await getUserProfile(session.userId)
+
   // NUNCA fetchea nodos/edges aquí (decisión b — el client los carga).
   return (
     <WorkspaceClient
@@ -38,6 +42,8 @@ export default async function WorkspacePage({
       workspaceName={workspace.name}
       userId={session.userId}
       role={role}
+      userName={profile?.displayName ?? null}
+      userEmail={profile?.email ?? null}
     />
   )
 }

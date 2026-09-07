@@ -38,11 +38,13 @@ export function mapWorkspacesForMenu(
 
 type ToolbarProps = {
   workspaceName?: string
+  userName?: string | null
+  userEmail?: string | null
   /** Abre CreateNodePopup en el centro del viewport (lo provee el padre). */
   onCreateNode?: () => void
 }
 
-export function Toolbar({ workspaceName, onCreateNode }: ToolbarProps) {
+export function Toolbar({ workspaceName, userName, userEmail, onCreateNode }: ToolbarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const isPanelCollapsed = useCanvasStore((s) => s.isPanelCollapsed)
@@ -112,16 +114,6 @@ export function Toolbar({ workspaceName, onCreateNode }: ToolbarProps) {
                 {w.name}
               </Link>
             ))}
-            {currentSlug && (
-              <Link
-                href={`/w/${currentSlug}/settings`}
-                onClick={() => setWsMenuOpen(false)}
-                className="mt-1 flex items-center gap-2 rounded border-t border-border px-3 py-2 text-sm hover:bg-muted"
-              >
-                <Settings className="h-4 w-4" />
-                Configuración
-              </Link>
-            )}
           </div>
         )}
       </div>
@@ -150,20 +142,36 @@ export function Toolbar({ workspaceName, onCreateNode }: ToolbarProps) {
         )}
       </button>
 
-      {/* Avatar dropdown */}
+      {/* Menú de usuario: avatar con identidad real + Configuración + Cerrar sesión */}
       <div className="relative">
         <button
           onClick={() => setAvatarOpen((o) => !o)}
           aria-label="Menú de usuario"
           className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium hover:bg-muted/70"
         >
-          {workspaceName?.charAt(0).toUpperCase() ?? 'U'}
+          {(userName ?? 'U').charAt(0).toUpperCase()}
         </button>
         {avatarOpen && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border bg-popover p-1 shadow-lg">
+          <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border bg-popover p-1 shadow-lg">
+            <div className="border-b border-border px-3 py-2">
+              <p className="truncate text-sm font-medium">{userName ?? 'Usuario'}</p>
+              {userEmail ? (
+                <p className="truncate text-xs text-muted-foreground">{userEmail}</p>
+              ) : null}
+            </div>
+            {currentSlug && (
+              <Link
+                href={`/w/${currentSlug}/settings`}
+                onClick={() => setAvatarOpen(false)}
+                className="mt-1 flex items-center gap-2 rounded px-3 py-2 text-sm hover:bg-muted"
+              >
+                <Settings className="h-4 w-4" />
+                Configuración
+              </Link>
+            )}
             <button
               onClick={handleLogout}
-              className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-destructive hover:bg-muted"
+              className="mt-1 flex w-full items-center gap-2 rounded border-t border-border px-3 py-2 text-sm text-destructive hover:bg-muted"
             >
               <LogOut className="h-4 w-4" />
               Cerrar sesión
