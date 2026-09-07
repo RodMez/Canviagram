@@ -17,6 +17,25 @@ if [ ${#SESSION_SECRET} -lt 32 ]; then
   exit 1
 fi
 
+# Telegram: si el bot está configurado, el secret del webhook es OBLIGATORIO y
+# debe cumplir el alfabeto que Telegram exige (1-256, [A-Za-z0-9_-]). Falla
+# temprano con mensaje claro en vez de arrancar con un webhook inseguro.
+if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+  if [ -z "$TELEGRAM_WEBHOOK_SECRET" ]; then
+    echo "[entrypoint] ERROR: TELEGRAM_BOT_TOKEN existe pero TELEGRAM_WEBHOOK_SECRET no está configurado" >&2
+    exit 1
+  fi
+  if [ ${#TELEGRAM_WEBHOOK_SECRET} -lt 32 ]; then
+    echo "[entrypoint] ERROR: TELEGRAM_WEBHOOK_SECRET must be at least 32 characters (usar un secreto aleatorio ~48 chars)" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$TELEGRAM_WEBHOOK_SECRET" | grep -Eq '^[A-Za-z0-9_-]+$'; then
+    echo "[entrypoint] ERROR: TELEGRAM_WEBHOOK_SECRET solo admite [A-Za-z0-9_-] (sin caracteres especiales)" >&2
+    exit 1
+  fi
+  echo "[entrypoint] Telegram habilitado: webhook secret válido (${#TELEGRAM_WEBHOOK_SECRET} chars)"
+fi
+
 # Resolver path real quitando prefijo file: para mkdir
 DB_PATH="$DATABASE_URL"
 case "$DB_PATH" in

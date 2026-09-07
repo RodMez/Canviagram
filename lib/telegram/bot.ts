@@ -1,8 +1,7 @@
 import { Bot, type Context } from 'grammy'
-import { generateObject } from 'ai'
-import { z } from 'zod'
+import { generateText } from 'ai'
 import { eq } from 'drizzle-orm'
-import { NODE_TYPES, NODE_STATUSES, workspaces } from '@/lib/db/schema'
+import { workspaces, CHAT_MESSAGE_MAX_CONTENT } from '@/lib/db/schema'
 import { db } from '@/lib/db'
 import { telegramBotToken } from '@/lib/telegram/config'
 import { consumeLinkCode } from '@/lib/telegram/link-store'
@@ -10,6 +9,13 @@ import { findBinding, upsertBinding, deleteBinding } from '@/lib/telegram/chats'
 import { isAIEnabled, getLLM } from '@/lib/ai/provider'
 import { createNode, getWorkspaceGraph } from '@/lib/canvas-service'
 import { ValidationError, ForbiddenError } from '@/lib/errors'
+import { parseTelegramNode } from '@/lib/telegram/parse'
+import {
+  buildTelegramChatKey,
+  listChatMessages,
+  appendAndTrimChatMessages,
+  clearChatMessages,
+} from '@/lib/chat/repository'
 
 // ============================================================
 // Helpers puros (exportados para tests — diseño F4.2 §4.1 N4)
@@ -61,22 +67,46 @@ export function _resetDedupe(): void {
 }
 
 // ============================================================
-// Schema LLM (diseño F4.2 §2.3) — shape de transporte; la validación
-// de negocio vive en canvas-service (createNodeSchema).
+// Memoria breve del chat (diseño f4.4): últimos mensajes persistidos
+// en chat_messages (source=telegram); se borra en /unlink.
 // ============================================================
 
-const telegramParseSchema = z.object({
-  shouldCreate: z.boolean(),
-  node: z
-    .object({
-      type: z.enum(NODE_TYPES),
-      title: z.string().min(1).max(200),
-      content: z.string().max(5000).nullish(),
-      status: z.enum(NODE_STATUSES).nullish(),
+const TELEGRAM_MEMORY_MAX = 8
+const TELEGRAM_MEMORY_MAX_CONTENT = 300
+
+function formatMemory(messages: Array<{ role: 'user' | 'assistant'; content: string }>): string {
+  const recent = messages.slice(-TELEGRAM_MEMORY_MAX)
+  if (recent.length === 0) return '(sin conversación previa en este chat)'
+  return recent
+    .map((m) => {
+      const content =
+        m.content.length > TELEGRAM_MEMORY_MAX_CONTENT
+          ? `${m.content.slice(0, TELEGRAM_MEMORY_MAX_CONTENT)}…`
+          : m.content
+      return `${m.role === 'user' ? 'usuario' : 'asistente'}: ${content}`
     })
-    .nullish(),
-  reply: z.string().max(2000).nullish(),
-})
+    .join('\n')
+}
+
+async function persistTelegramTurn(
+  workspaceId: string,
+  chatKey: string,
+  userText: string,
+  assistantText: string
+): Promise<void> {
+  const user = userText.trim().slice(0, CHAT_MESSAGE_MAX_CONTENT)
+  const assistant = assistantText.trim().slice(0, CHAT_MESSAGE_MAX_CONTENT)
+  if (!user && !assistant) return
+  await appendAndTrimChatMessages({
+    workspaceId,
+    chatKey,
+    source: 'telegram',
+    messages: [
+      { role: 'user', content: user },
+      { role: 'assistant', content: assistant },
+    ],
+  })
+}
 
 // ============================================================
 // System prompt (diseño F4.2 §2.4) — resumen idéntico a F3.2
@@ -84,7 +114,8 @@ const telegramParseSchema = z.object({
 
 function buildTelegramSystemPrompt(
   workspaceName: string,
-  graph: { nodes: Array<{ id: string; type: string; title: string; status: string | null }>; edges: Array<{ sourceId: string; targetId: string; type: string; label: string | null }> }
+  graph: { nodes: Array<{ id: string; type: string; title: string; status: string | null }>; edges: Array<{ sourceId: string; targetId: string; type: string; label: string | null }> },
+  memory: Array<{ role: 'user' | 'assistant'; content: string }>
 ): string {
   const nodeSummary = graph.nodes
     .slice(0, 50)
@@ -106,12 +137,16 @@ ${nodeSummary || '(ninguno)'}
 Conexiones:
 ${edgeSummary || '(ninguna)'}
 
+## Conversación reciente en este chat
+${formatMemory(memory)}
+
 ## Reglas
 - Decide si el mensaje intenta crear un nodo en el canvas. Si sí: shouldCreate=true y
   rellena node con type (project|task|note|idea|person|resource), title, content opcional,
   status SOLO si type=task. La posición la asigna el sistema: NO la generes ni la pidas.
 - Si es saludo, pregunta o tema fuera del canvas: shouldCreate=false y un reply corto.
 - No inventes IDs de nodos ni menciones datos de otros workspaces.
+- Responde SIEMPRE en JSON plano con el shape: {"shouldCreate":boolean,"node":{...}|null,"reply":string|null}
 - Responde en español unless the user writes in English.`
 }
 
@@ -154,6 +189,8 @@ export async function handleUnlink(ctx: TelegramReplyCtx): Promise<void> {
     return
   }
   await deleteBinding(ctx.chatId, ctx.tgUserId)
+  // Borrar también la memoria del chat (privacidad: /unlink = reset total).
+  await clearChatMessages(binding.workspaceId, buildTelegramChatKey(ctx.chatId, ctx.tgUserId))
   await ctx.reply('🔓 Chat desvinculado del workspace.', { parse_mode: 'HTML' })
 }
 
@@ -190,33 +227,50 @@ export async function handleMessage(ctx: TelegramReplyCtx, text: string): Promis
     throw error
   }
 
-  const { object } = await generateObject({
+  const chatKey = buildTelegramChatKey(ctx.chatId, ctx.tgUserId)
+  const memory = await listChatMessages({ workspaceId: binding.workspaceId, chatKey, limit: TELEGRAM_MEMORY_MAX })
+
+  // generateText + parse Zod local (F4.2 f4.5): sin AI_NoObjectGeneratedError.
+  const { text: raw } = await generateText({
     model: getLLM(),
-    schema: telegramParseSchema,
-    system: buildTelegramSystemPrompt(workspaceName, graph),
+    system: buildTelegramSystemPrompt(workspaceName, graph, memory),
     prompt: text.slice(0, 4000),
   })
 
-  if (object.shouldCreate && object.node) {
+  const parsed = parseTelegramNode(raw)
+  if (!parsed) {
+    await ctx.reply('No pude interpretar tu mensaje. Intenta de nuevo con una instrucción más clara.', {
+      parse_mode: 'HTML',
+    })
+    return
+  }
+
+  if (parsed.shouldCreate && parsed.node) {
+    let assistantText = ''
     try {
-      const node = await createNode(binding.workspaceId, binding.userId, object.node)
+      const node = await createNode(binding.workspaceId, binding.userId, parsed.node)
+      assistantText = `Nodo creado: ${node.title} (${node.type} · ${node.id})`
       await ctx.reply(`✅ Nodo creado: <b>${escapeHtml(node.title)}</b> (${node.type} · ${node.id})`, {
         parse_mode: 'HTML',
       })
     } catch (error) {
       if (error instanceof ValidationError) {
+        assistantText = `No pude crear el nodo: ${error.message}`
         await ctx.reply(`No pude crear el nodo: ${escapeHtml(error.message)}`, { parse_mode: 'HTML' })
       } else if (error instanceof ForbiddenError) {
+        assistantText = 'Sin permisos para crear nodos en este workspace.'
         await ctx.reply('Sin permisos para crear nodos en este workspace.', { parse_mode: 'HTML' })
       } else {
         throw error
       }
     }
+    await persistTelegramTurn(binding.workspaceId, chatKey, text, assistantText)
     return
   }
 
-  if (object.reply) {
-    await ctx.reply(escapeHtml(object.reply), { parse_mode: 'HTML' })
+  if (parsed.reply) {
+    await persistTelegramTurn(binding.workspaceId, chatKey, text, parsed.reply)
+    await ctx.reply(escapeHtml(parsed.reply), { parse_mode: 'HTML' })
   }
 }
 
