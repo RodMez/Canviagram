@@ -11,8 +11,9 @@ import { handleApiError } from '@/lib/api-helpers'
 
 export async function POST(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -20,7 +21,7 @@ export async function POST(
 
   try {
     // Orden del diseño F4.2 §4.2 M1: session → assertCanAdmin → isTelegramEnabled → createLinkCode
-    await assertCanAdmin(params.id, session.userId)
+    await assertCanAdmin(id, session.userId)
 
     if (!isTelegramEnabled()) {
       return NextResponse.json(
@@ -29,13 +30,13 @@ export async function POST(
       )
     }
 
-    const { code, expiresAt } = createLinkCode({ workspaceId: params.id, userId: session.userId })
+    const { code, expiresAt } = createLinkCode({ workspaceId: id, userId: session.userId })
 
     return NextResponse.json({
       code,
       expiresAt: expiresAt.toISOString(),
       ttlSeconds: LINK_CODE_TTL_SECONDS,
-      workspaceId: params.id,
+      workspaceId: id,
     })
   } catch (error) {
     return handleApiError(error)
@@ -44,15 +45,16 @@ export async function POST(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
   try {
-    await assertCanAdmin(params.id, session.userId)
+    await assertCanAdmin(id, session.userId)
 
     if (!isTelegramEnabled()) {
       return NextResponse.json(
@@ -61,7 +63,7 @@ export async function DELETE(
       )
     }
 
-    await deleteBindingsByWorkspace(params.id)
+    await deleteBindingsByWorkspace(id)
 
     return new NextResponse(null, { status: 204 })
   } catch (error) {

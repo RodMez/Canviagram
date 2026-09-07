@@ -7,7 +7,8 @@ import { subscribe, unsubscribe } from '@/lib/sse/pubsub'
 
 const HEARTBEAT_INTERVAL_MS = 25_000
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return new Response(JSON.stringify({ error: 'No autorizado' }), {
@@ -17,7 +18,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 
   try {
-    await assertWorkspaceAccess(params.id, session.userId, 'viewer')
+    await assertWorkspaceAccess(id, session.userId, 'viewer')
   } catch {
     return new Response(JSON.stringify({ error: 'Acceso denegado' }), {
       status: 403,
@@ -32,10 +33,10 @@ export async function GET(request: Request, { params }: { params: { id: string }
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controllerRef = controller
-      subscribe(params.id, controller)
+      subscribe(id, controller)
 
       controller.enqueue(
-        encoder.encode(`event: connected\ndata: ${JSON.stringify({ workspaceId: params.id })}\n\n`)
+        encoder.encode(`event: connected\ndata: ${JSON.stringify({ workspaceId: id })}\n\n`)
       )
 
       heartbeatTimer = setInterval(() => {
@@ -58,7 +59,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
     if (controllerRef) {
       try {
-        unsubscribe(params.id, controllerRef)
+        unsubscribe(id, controllerRef)
       } catch {
         // controller may already be closed
       }

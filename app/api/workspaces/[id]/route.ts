@@ -9,21 +9,23 @@ import { updateWorkspace, deleteWorkspace } from '@/lib/workspace-admin'
 import { deleteWorkspaceSchema } from '@/lib/validators/workspace'
 import { ValidationError } from '@/lib/errors'
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
   try {
-    const { role, workspace } = await assertWorkspaceAccess(params.id, session.userId, 'viewer')
+    const { role, workspace } = await assertWorkspaceAccess(id, session.userId, 'viewer')
     return NextResponse.json({ workspace: { ...workspace, role } })
   } catch (error) {
     return handleApiError(error)
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -37,14 +39,15 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 
   try {
-    const { workspace } = await updateWorkspace(params.id, session.userId, body)
+    const { workspace } = await updateWorkspace(id, session.userId, body)
     return NextResponse.json({ workspace })
   } catch (error) {
     return handleApiError(error)
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -69,7 +72,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   }
 
   try {
-    await deleteWorkspace(params.id, session.userId, parsed!.confirmSlug)
+    await deleteWorkspace(id, session.userId, parsed!.confirmSlug)
     return new NextResponse(null, { status: 204 })
   } catch (error) {
     return handleApiError(error)

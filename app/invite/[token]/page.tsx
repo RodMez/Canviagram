@@ -9,12 +9,13 @@ export const dynamic = 'force-dynamic'
 export default async function InvitePage({
   params,
 }: {
-  params: { token: string }
+  params: Promise<{ token: string }>
 }) {
+  const { token } = await params
   const session = await getSession()
   if (!session) {
-    redirect(`/login?next=${encodeURIComponent(`/invite/${params.token}`)}`)
+    redirect(`/login?next=${encodeURIComponent(`/invite/${token}`)}`)
   }
 
-  return <InviteClient token={params.token} />
+  return <InviteClient token={token} />
 }

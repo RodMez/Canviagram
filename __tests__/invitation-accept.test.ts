@@ -105,7 +105,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     mockGetSession.mockResolvedValue(null)
     const res = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token: 'any-token' } }
+      { params: Promise.resolve({ token: 'any-token' }) }
     )
     expect(res.status).toBe(401)
   })
@@ -114,7 +114,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     mockGetSession.mockResolvedValue({ userId: inviteeId, token: 'tok' })
     const res = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token: 'fake-token' } }
+      { params: Promise.resolve({ token: 'fake-token' }) }
     )
     expect(res.status).toBe(404)
     const json = await res.json()
@@ -136,7 +136,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     mockGetSession.mockResolvedValue({ userId: inviteeId, token: 'tok' })
     const res = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token } }
+      { params: Promise.resolve({ token }) }
     )
     expect(res.status).toBe(410)
     const json = await res.json()
@@ -161,7 +161,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     mockGetSession.mockResolvedValue({ userId: inviteeId, token: 'tok' })
     const res = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token } }
+      { params: Promise.resolve({ token }) }
     )
     expect(res.status).toBe(410)
     const json = await res.json()
@@ -177,7 +177,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     mockGetSession.mockResolvedValue({ userId: inviteeId, token: 'tok' })
     const res = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token } }
+      { params: Promise.resolve({ token }) }
     )
     expect(res.status).toBe(403)
     const json = await res.json()
@@ -200,7 +200,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     mockGetSession.mockResolvedValue({ userId: inviteeId, token: 'tok' })
     const res = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token } }
+      { params: Promise.resolve({ token }) }
     )
     expect(res.status).toBe(409)
     const json = await res.json()
@@ -218,7 +218,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
     const res = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token } }
+      { params: Promise.resolve({ token }) }
     )
     expect(res.status).toBe(409)
 
@@ -231,7 +231,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     mockGetSession.mockResolvedValue({ userId: inviteeId, token: 'tok' })
     const res = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token } }
+      { params: Promise.resolve({ token }) }
     )
     expect(res.status).toBe(200)
     const json = await res.json()
@@ -254,7 +254,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     // re-aceptar → 410 (ya utilizada)
     const res2 = await postAccept(
       new Request('http://localhost/api/invitations/x/accept', { method: 'POST' }),
-      { params: { token } }
+      { params: Promise.resolve({ token }) }
     )
     expect(res2.status).toBe(410)
 

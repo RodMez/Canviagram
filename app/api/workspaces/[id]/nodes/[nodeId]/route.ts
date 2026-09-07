@@ -8,8 +8,9 @@ import { updateNode, softDeleteNode, ValidationError, NotFoundError, ForbiddenEr
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string; nodeId: string } }
+  { params }: { params: Promise<{ id: string; nodeId: string }> }
 ) {
+  const { id, nodeId } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -18,14 +19,14 @@ export async function PATCH(
   try {
     // Defensa en profundidad: verificación explícita de acceso antes de mutar
     // canvas-service también verifica internamente; mantenemos doble capa
-    await assertWorkspaceAccess(params.id, session.userId, 'member')
+    await assertWorkspaceAccess(id, session.userId, 'member')
 
     const body = await request.json().catch(() => null)
     if (!body) {
       return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 })
     }
 
-    const updated = await updateNode(params.id, params.nodeId, session.userId, body)
+    const updated = await updateNode(id, nodeId, session.userId, body)
     return NextResponse.json(updated)
   } catch (error) {
     if (error instanceof ValidationError) {
@@ -44,17 +45,18 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string; nodeId: string } }
+  { params }: { params: Promise<{ id: string; nodeId: string }> }
 ) {
+  const { id, nodeId } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
   try {
-    await assertWorkspaceAccess(params.id, session.userId, 'member')
+    await assertWorkspaceAccess(id, session.userId, 'member')
 
-    const deleted = await softDeleteNode(params.id, params.nodeId, session.userId)
+    const deleted = await softDeleteNode(id, nodeId, session.userId)
     return NextResponse.json(deleted)
   } catch (error) {
     if (error instanceof NotFoundError) {

@@ -6,7 +6,8 @@ import { getSession } from '@/lib/auth/session'
 import { handleApiError } from '@/lib/api-helpers'
 import { inviteMember } from '@/lib/workspace-admin'
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -20,7 +21,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   try {
-    const { invitation, status } = await inviteMember(params.id, session.userId, body)
+    const { invitation, status } = await inviteMember(id, session.userId, body)
     // 201 si se creó nueva invitación; 200 si se reenvió una pendiente (idempotente)
     return NextResponse.json(
       { invitation: { id: invitation.id, email: invitation.email, role: invitation.role, expiresAt: invitation.expiresAt } },

@@ -105,13 +105,13 @@ describe('workspace members API routes', () => {
   describe('GET /api/workspaces/[id]/members', () => {
     it('401 sin sesión', async () => {
       mockGetSession.mockResolvedValue(null)
-      const res = await getMembers(new Request('http://localhost/api/workspaces/x/members'), { params: { id: wsId } })
+      const res = await getMembers(new Request('http://localhost/api/workspaces/x/members'), { params: Promise.resolve({ id: wsId }) })
       expect(res.status).toBe(401)
     })
 
     it('viewer puede listar (lectura)', async () => {
       mockGetSession.mockResolvedValue({ userId: viewerId, token: 'tok' })
-      const res = await getMembers(new Request('http://localhost/api/workspaces/x/members'), { params: { id: wsId } })
+      const res = await getMembers(new Request('http://localhost/api/workspaces/x/members'), { params: Promise.resolve({ id: wsId }) })
       expect(res.status).toBe(200)
       const json = await res.json()
       expect(Array.isArray(json.members)).toBe(true)
@@ -124,7 +124,7 @@ describe('workspace members API routes', () => {
 
     it('outsider → 403', async () => {
       mockGetSession.mockResolvedValue({ userId: outsiderId, token: 'tok' })
-      const res = await getMembers(new Request('http://localhost/api/workspaces/x/members'), { params: { id: wsId } })
+      const res = await getMembers(new Request('http://localhost/api/workspaces/x/members'), { params: Promise.resolve({ id: wsId }) })
       expect(res.status).toBe(403)
     })
   })
@@ -142,7 +142,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: 'x@y.com', role: 'member' }),
         }),
-        { params: { id: wsId } }
+        { params: Promise.resolve({ id: wsId }) }
       )
       expect(res.status).toBe(401)
     })
@@ -155,7 +155,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: 'new@example.com', role: 'member' }),
         }),
-        { params: { id: wsId } }
+        { params: Promise.resolve({ id: wsId }) }
       )
       expect(res.status).toBe(403)
     })
@@ -169,7 +169,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: inviteEmail, role: 'member' }),
         }),
-        { params: { id: wsId } }
+        { params: Promise.resolve({ id: wsId }) }
       )
       expect(res.status).toBe(201)
       const json = await res.json()
@@ -192,7 +192,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: inviteEmail, role: 'viewer' }),
         }),
-        { params: { id: wsId } }
+        { params: Promise.resolve({ id: wsId }) }
       )
       expect(first.status).toBe(201)
       const firstJson = await first.json()
@@ -203,7 +203,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: inviteEmail, role: 'viewer' }),
         }),
-        { params: { id: wsId } }
+        { params: Promise.resolve({ id: wsId }) }
       )
       expect(second.status).toBe(200)
       const secondJson = await second.json()
@@ -222,7 +222,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: `mem-member-${memberId.slice(0, 8)}@example.com`, role: 'member' }),
         }),
-        { params: { id: wsId } }
+        { params: Promise.resolve({ id: wsId }) }
       )
       expect(res.status).toBe(409)
     })
@@ -235,7 +235,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: `mem-owner-${ownerId.slice(0, 8)}@example.com`, role: 'member' }),
         }),
-        { params: { id: wsId } }
+        { params: Promise.resolve({ id: wsId }) }
       )
       expect(res.status).toBe(409)
     })
@@ -248,7 +248,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email: 'not-an-email', role: 'member' }),
         }),
-        { params: { id: wsId } }
+        { params: Promise.resolve({ id: wsId }) }
       )
       expect(res.status).toBe(400)
     })
@@ -267,7 +267,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role: 'admin' }),
         }),
-        { params: { id: wsId, userId: memberId } }
+        { params: Promise.resolve({ id: wsId, userId: memberId }) }
       )
       expect(res.status).toBe(401)
     })
@@ -280,7 +280,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role: 'admin' }),
         }),
-        { params: { id: wsId, userId: memberId } }
+        { params: Promise.resolve({ id: wsId, userId: memberId }) }
       )
       expect(res.status).toBe(403)
     })
@@ -293,7 +293,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role: 'admin' }),
         }),
-        { params: { id: wsId, userId: memberId } }
+        { params: Promise.resolve({ id: wsId, userId: memberId }) }
       )
       expect(res.status).toBe(200)
       const json = await res.json()
@@ -329,7 +329,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role: 'member' }),
         }),
-        { params: { id: wsId, userId: otherAdminId } }
+        { params: Promise.resolve({ id: wsId, userId: otherAdminId }) }
       )
       expect(res.status).toBe(403)
 
@@ -344,7 +344,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role: 'member' }),
         }),
-        { params: { id: wsId, userId: ownerId } }
+        { params: Promise.resolve({ id: wsId, userId: ownerId }) }
       )
       expect(res.status).toBe(400)
     })
@@ -357,7 +357,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role: 'member' }),
         }),
-        { params: { id: wsId, userId: adminId } }
+        { params: Promise.resolve({ id: wsId, userId: adminId }) }
       )
       expect(res.status).toBe(400)
     })
@@ -370,7 +370,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role: 'member' }),
         }),
-        { params: { id: wsId, userId: outsiderId } }
+        { params: Promise.resolve({ id: wsId, userId: outsiderId }) }
       )
       expect(res.status).toBe(404)
     })
@@ -383,7 +383,7 @@ describe('workspace members API routes', () => {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role: 'owner' }),
         }),
-        { params: { id: wsId, userId: memberId } }
+        { params: Promise.resolve({ id: wsId, userId: memberId }) }
       )
       expect(res.status).toBe(400)
     })
@@ -398,7 +398,7 @@ describe('workspace members API routes', () => {
       mockGetSession.mockResolvedValue(null)
       const res = await deleteMember(
         new Request('http://localhost/api/workspaces/x/members/y', { method: 'DELETE' }),
-        { params: { id: wsId, userId: memberId } }
+        { params: Promise.resolve({ id: wsId, userId: memberId }) }
       )
       expect(res.status).toBe(401)
     })
@@ -407,7 +407,7 @@ describe('workspace members API routes', () => {
       mockGetSession.mockResolvedValue({ userId: viewerId, token: 'tok' })
       const res = await deleteMember(
         new Request('http://localhost/api/workspaces/x/members/y', { method: 'DELETE' }),
-        { params: { id: wsId, userId: memberId } }
+        { params: Promise.resolve({ id: wsId, userId: memberId }) }
       )
       expect(res.status).toBe(403)
     })
@@ -432,7 +432,7 @@ describe('workspace members API routes', () => {
       mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
       const res = await deleteMember(
         new Request('http://localhost/api/workspaces/x/members/y', { method: 'DELETE' }),
-        { params: { id: wsId, userId: tempUserId } }
+        { params: Promise.resolve({ id: wsId, userId: tempUserId }) }
       )
       expect(res.status).toBe(204)
 
@@ -449,7 +449,7 @@ describe('workspace members API routes', () => {
       mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
       const res = await deleteMember(
         new Request('http://localhost/api/workspaces/x/members/y', { method: 'DELETE' }),
-        { params: { id: wsId, userId: ownerId } }
+        { params: Promise.resolve({ id: wsId, userId: ownerId }) }
       )
       expect(res.status).toBe(400)
     })
@@ -458,7 +458,7 @@ describe('workspace members API routes', () => {
       mockGetSession.mockResolvedValue({ userId: adminId, token: 'tok' })
       const res = await deleteMember(
         new Request('http://localhost/api/workspaces/x/members/y', { method: 'DELETE' }),
-        { params: { id: wsId, userId: adminId } }
+        { params: Promise.resolve({ id: wsId, userId: adminId }) }
       )
       expect(res.status).toBe(400)
     })
@@ -467,7 +467,7 @@ describe('workspace members API routes', () => {
       mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
       const res = await deleteMember(
         new Request('http://localhost/api/workspaces/x/members/y', { method: 'DELETE' }),
-        { params: { id: wsId, userId: outsiderId } }
+        { params: Promise.resolve({ id: wsId, userId: outsiderId }) }
       )
       expect(res.status).toBe(404)
     })

@@ -7,7 +7,8 @@ import { count, eq } from 'drizzle-orm'
 import { handleApiError, parseQueryInt } from '@/lib/api-helpers'
 import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -18,14 +19,14 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const limit = parseQueryInt(searchParams.get('limit'), 50)
     const offset = parseQueryInt(searchParams.get('offset'), 0)
 
-    await assertWorkspaceAccess(params.id, session.userId, 'viewer')
+    await assertWorkspaceAccess(id, session.userId, 'viewer')
 
-    const edgeList = await listEdges(params.id, session.userId, { limit, offset })
+    const edgeList = await listEdges(id, session.userId, { limit, offset })
 
     const [countRow] = await db
       .select({ value: count() })
       .from(edges)
-      .where(eq(edges.workspaceId, params.id))
+      .where(eq(edges.workspaceId, id))
 
     const totalCount = countRow?.value ?? 0
 
@@ -38,7 +39,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -52,7 +54,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   try {
-    const edge = await createEdge(params.id, session.userId, body)
+    const edge = await createEdge(id, session.userId, body)
     return NextResponse.json({ edge }, { status: 201 })
   } catch (error) {
     return handleApiError(error)

@@ -101,13 +101,13 @@ describe('workspaces API routes', () => {
 
   it('401 sin sesión en GET /api/workspaces/:id/nodes', async () => {
     mockGetSession.mockResolvedValue(null)
-    const res = await getNodes(new Request('http://localhost/api/workspaces/x/nodes'), { params: { id: wsId } })
+    const res = await getNodes(new Request('http://localhost/api/workspaces/x/nodes'), { params: Promise.resolve({ id: wsId }) })
     expect(res.status).toBe(401)
   })
 
   it('401 sin sesión en GET /api/workspaces/:id/events', async () => {
     mockGetSession.mockResolvedValue(null)
-    const res = await getEvents(new Request('http://localhost/api/workspaces/x/events'), { params: { id: wsId } })
+    const res = await getEvents(new Request('http://localhost/api/workspaces/x/events'), { params: Promise.resolve({ id: wsId }) })
     expect(res.status).toBe(401)
   })
 
@@ -138,7 +138,7 @@ describe('workspaces API routes', () => {
 
   it('GET /api/workspaces/:id retorna workspace con role', async () => {
     mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
-    const res = await getWorkspaceById(new Request('http://localhost/api/workspaces/x'), { params: { id: wsId } })
+    const res = await getWorkspaceById(new Request('http://localhost/api/workspaces/x'), { params: Promise.resolve({ id: wsId }) })
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.workspace.id).toBe(wsId)
@@ -196,7 +196,7 @@ describe('workspaces API routes', () => {
   it('GET /api/workspaces/:id/nodes retorna { nodes, pagination }', async () => {
     mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
     const res = await getNodes(new Request('http://localhost/api/workspaces/x/nodes?limit=10&offset=0'), {
-      params: { id: wsId },
+      params: Promise.resolve({ id: wsId }),
     })
     expect(res.status).toBe(200)
     const json = await res.json()
@@ -248,7 +248,7 @@ describe('workspaces API routes', () => {
       // offset 0 con limit pequeño -> hay más páginas
       const res1 = await getNodes(
         new Request(`http://localhost/api/workspaces/x/nodes?limit=${limit}&offset=0`),
-        { params: { id: pagWsId } }
+        { params: Promise.resolve({ id: pagWsId }) }
       )
       expect(res1.status).toBe(200)
       const json1 = await res1.json()
@@ -259,7 +259,7 @@ describe('workspaces API routes', () => {
       // última página -> no hay más
       const res2 = await getNodes(
         new Request(`http://localhost/api/workspaces/x/nodes?limit=${limit}&offset=${limit}`),
-        { params: { id: pagWsId } }
+        { params: Promise.resolve({ id: pagWsId }) }
       )
       expect(res2.status).toBe(200)
       const json2 = await res2.json()
@@ -282,7 +282,7 @@ describe('workspaces API routes', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ type: 'note', title: 'Nodo route' }),
       }),
-      { params: { id: wsId } }
+      { params: Promise.resolve({ id: wsId }) }
     )
     expect(res.status).toBe(201)
     const json = await res.json()
@@ -292,7 +292,7 @@ describe('workspaces API routes', () => {
 
   it('GET /api/workspaces/:id/edges retorna { edges, pagination }', async () => {
     mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
-    const res = await getEdges(new Request('http://localhost/api/workspaces/x/edges'), { params: { id: wsId } })
+    const res = await getEdges(new Request('http://localhost/api/workspaces/x/edges'), { params: Promise.resolve({ id: wsId }) })
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(Array.isArray(json.edges)).toBe(true)
@@ -308,7 +308,7 @@ describe('workspaces API routes', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ type: 'note', title: 'E1' }),
       }),
-      { params: { id: wsId } }
+      { params: Promise.resolve({ id: wsId }) }
     )
     const j1 = await n1.json()
     const n2 = await postNodes(
@@ -317,7 +317,7 @@ describe('workspaces API routes', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ type: 'note', title: 'E2' }),
       }),
-      { params: { id: wsId } }
+      { params: Promise.resolve({ id: wsId }) }
     )
     const j2 = await n2.json()
 
@@ -327,7 +327,7 @@ describe('workspaces API routes', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ sourceId: j1.node.id, targetId: j2.node.id, type: 'related_to' }),
       }),
-      { params: { id: wsId } }
+      { params: Promise.resolve({ id: wsId }) }
     )
     expect(res.status).toBe(201)
     const json = await res.json()
@@ -337,7 +337,7 @@ describe('workspaces API routes', () => {
 
   it('GET /api/workspaces/:id/events - SSE connected + heartbeat + relay node:created', async () => {
     mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
-    const res = await getEvents(new Request('http://localhost/api/workspaces/x/events'), { params: { id: wsId } })
+    const res = await getEvents(new Request('http://localhost/api/workspaces/x/events'), { params: Promise.resolve({ id: wsId }) })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('text/event-stream')
 
@@ -357,7 +357,7 @@ describe('workspaces API routes', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ type: 'note', title: 'SSE node' }),
       }),
-      { params: { id: wsId } }
+      { params: Promise.resolve({ id: wsId }) }
     )
     expect(nodeRes.status).toBe(201)
 

@@ -98,7 +98,7 @@ export function parseAndVerifyCookieValue(raw: string): { userId: string; token:
  */
 export async function getSession(): Promise<Session | null> {
   try {
-    const cookieStore = cookies() as unknown as { get: (name: string) => { value: string } | undefined }
+    const cookieStore = await cookies()
     const hostRaw = cookieStore.get(SESSION_COOKIE_NAME)?.value
     const legacyRaw = cookieStore.get(LEGACY_COOKIE_NAME)?.value
 
@@ -216,17 +216,17 @@ export async function destroySession(token: string): Promise<void> {
 /**
  * Setea cookie de sesión vía next/headers cookies() — para Server Actions / Route Handlers que usan cookies()
  */
-export function setSessionCookie(userId: string, token: string, expiresAt: Date): void {
+export async function setSessionCookie(userId: string, token: string, expiresAt: Date): Promise<void> {
   const value = buildSessionCookieValue(userId, token, expiresAt)
-  const store = cookies() as unknown as { set: (name: string, value: string, opts: Record<string, unknown>) => void }
+  const store = await cookies()
   store.set(SESSION_COOKIE_NAME, value, { ...SESSION_COOKIE_OPTIONS, expires: expiresAt })
 }
 
 /**
  * Limpia cookie de sesión vía next/headers cookies()
  */
-export function clearSessionCookie(): void {
-  const store = cookies() as unknown as { set: (name: string, value: string, opts: Record<string, unknown>) => void }
+export async function clearSessionCookie(): Promise<void> {
+  const store = await cookies()
   store.set(SESSION_COOKIE_NAME, '', { ...SESSION_COOKIE_OPTIONS, expires: new Date(0), maxAge: 0 })
 }
 

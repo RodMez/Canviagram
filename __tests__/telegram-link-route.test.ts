@@ -33,7 +33,7 @@ describe('POST /api/workspaces/:id/telegram/link', () => {
 
   it('401 sin sesión', async () => {
     mSession.mockResolvedValue(null)
-    const res = await POST(makeRequest(), { params: { id: WS_ID } })
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: WS_ID }) })
     expect(res.status).toBe(401)
   })
 
@@ -41,7 +41,7 @@ describe('POST /api/workspaces/:id/telegram/link', () => {
     mSession.mockResolvedValue({ userId: USER_ID, token: 't' })
     mIsEnabled.mockReturnValue(true)
     mAssertCanAdmin.mockRejectedValue(new ForbiddenError('Se requiere rol mínimo: admin'))
-    const res = await POST(makeRequest(), { params: { id: WS_ID } })
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: WS_ID }) })
     expect(res.status).toBe(403)
     expect((await res.json()).error).toBe('Se requiere rol mínimo: admin')
   })
@@ -50,14 +50,14 @@ describe('POST /api/workspaces/:id/telegram/link', () => {
     mSession.mockResolvedValue({ userId: USER_ID, token: 't' })
     mIsEnabled.mockReturnValue(true)
     mAssertCanAdmin.mockRejectedValue(new NotFoundError('Workspace no encontrado'))
-    const res = await POST(makeRequest(), { params: { id: 'ws-missing' } })
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: 'ws-missing' }) })
     expect(res.status).toBe(404)
   })
 
   it('503 si Telegram no está habilitado', async () => {
     mSession.mockResolvedValue({ userId: USER_ID, token: 't' })
     mIsEnabled.mockReturnValue(false)
-    const res = await POST(makeRequest(), { params: { id: WS_ID } })
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: WS_ID }) })
     expect(res.status).toBe(503)
     expect((await res.json()).error).toContain('Telegram no está habilitado')
   })
@@ -66,7 +66,7 @@ describe('POST /api/workspaces/:id/telegram/link', () => {
     mSession.mockResolvedValue({ userId: USER_ID, token: 't' })
     mIsEnabled.mockReturnValue(true)
     mAssertCanAdmin.mockResolvedValue({ role: 'admin', workspace: { id: WS_ID } } as never)
-    const res = await POST(makeRequest(), { params: { id: WS_ID } })
+    const res = await POST(makeRequest(), { params: Promise.resolve({ id: WS_ID }) })
     expect(res.status).toBe(200)
 
     const body = await res.json()

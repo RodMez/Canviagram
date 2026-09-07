@@ -10,17 +10,18 @@ export const dynamic = 'force-dynamic'
 export default async function WorkspacePage({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
+  const { slug } = await params
   const session = await getSession()
   if (!session) {
-    redirect(`/login?next=${encodeURIComponent(`/w/${params.slug}`)}`)
+    redirect(`/login?next=${encodeURIComponent(`/w/${slug}`)}`)
   }
 
   let workspace
   let role
   try {
-    const resolved = await resolveWorkspaceBySlug(params.slug, session.userId)
+    const resolved = await resolveWorkspaceBySlug(slug, session.userId)
     workspace = resolved.workspace
     role = resolved.role
   } catch (error) {

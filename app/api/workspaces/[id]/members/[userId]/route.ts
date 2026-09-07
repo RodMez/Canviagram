@@ -6,7 +6,8 @@ import { getSession } from '@/lib/auth/session'
 import { handleApiError } from '@/lib/api-helpers'
 import { updateMemberRole, revokeMember } from '@/lib/workspace-admin'
 
-export async function PATCH(request: Request, { params }: { params: { id: string; userId: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; userId: string }> }) {
+  const { id, userId } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -20,21 +21,22 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 
   try {
-    const { member } = await updateMemberRole(params.id, session.userId, params.userId, body)
+    const { member } = await updateMemberRole(id, session.userId, userId, body)
     return NextResponse.json({ member })
   } catch (error) {
     return handleApiError(error)
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: { id: string; userId: string } }) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string; userId: string }> }) {
+  const { id, userId } = await params
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
   try {
-    await revokeMember(params.id, session.userId, params.userId)
+    await revokeMember(id, session.userId, userId)
     return new NextResponse(null, { status: 204 })
   } catch (error) {
     return handleApiError(error)

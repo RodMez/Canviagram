@@ -8,9 +8,9 @@ import { eq } from 'drizzle-orm'
 
 export async function GET(
   _request: Request,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> }
 ) {
-  const rawToken = params.token
+  const { token: rawToken } = await params
   const token = typeof rawToken === 'string' ? rawToken.trim() : ''
 
   if (!token || token.length === 0) {
