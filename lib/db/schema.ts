@@ -309,6 +309,51 @@ export const telegramChats = sqliteTable(
 )
 
 // ============================================================
+// CHAT IA (persistencia web + memoria Telegram)
+// ============================================================
+
+export const CHAT_SOURCES = ['web', 'telegram'] as const
+export type ChatSource = (typeof CHAT_SOURCES)[number]
+
+export const CHAT_ROLES = ['user', 'assistant'] as const
+export type ChatRole = (typeof CHAT_ROLES)[number]
+
+/** Longitud máxima por mensaje (en chars) — evita abuso de payload y filas gigantes. */
+export const CHAT_MESSAGE_MAX_CONTENT = 4000
+/** Máximo de mensajes retenidos por chatKey. Se barren los más antiguos al exceder. */
+export const CHAT_MESSAGES_CAP = 200
+
+/**
+ * Historial de conversación con la IA.
+ * - chatKey: web = userId; telegram = `tg:<telegramChatId>:<telegramUserId>`.
+ * - source: canal donde se originó (web | telegram); se usa para memoria del bot.
+ */
+export const chatMessages = sqliteTable(
+  'chat_messages',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    chatKey: text('chat_key').notNull(),
+    source: text('source', { enum: CHAT_SOURCES }).notNull().default('web'),
+    role: text('role', { enum: CHAT_ROLES }).notNull(),
+    content: text('content').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => ({
+    workspaceChatIdx: index('idx_chat_messages_workspace_chat').on(
+      t.workspaceId,
+      t.chatKey,
+      t.createdAt
+    ),
+    chatKeyIdx: index('idx_chat_messages_chat_key').on(t.chatKey),
+  })
+)
+
+// ============================================================
 // RELACIONES DRIZZLE
 // ============================================================
 
@@ -327,6 +372,7 @@ export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   nodes: many(nodes),
   edges: many(edges),
   telegramChats: many(telegramChats),
+  chatMessages: many(chatMessages),
 }))
 
 export const workspaceMembersRelations = relations(
@@ -388,6 +434,13 @@ export const telegramChatsRelations = relations(telegramChats, ({ one }) => ({
   }),
 }))
 
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [chatMessages.workspaceId],
+    references: [workspaces.id],
+  }),
+}))
+
 // ============================================================
 // TIPOS INFERIDOS
 // Usar en canvas-service.ts, route handlers y schemas de Zod.
@@ -423,3 +476,6 @@ export type NewEdge = typeof edges.$inferInsert
 
 export type TelegramChat = typeof telegramChats.$inferSelect
 export type NewTelegramChat = typeof telegramChats.$inferInsert
+
+export type ChatMessage = typeof chatMessages.$inferSelect
+export type NewChatMessage = typeof chatMessages.$inferInsert

@@ -1,17 +1,15 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { isStaticToolUIPart, getStaticToolName, type UIMessage } from 'ai'
+import { Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { consumeUIMessageStream } from '@/lib/ai/ui-message-stream'
 import { useCanvasStore, selectNodes, selectEdges } from '@/store/canvas-store'
 import { isDemoWorkspace, demoGraphToPayload, DEMO_WORKSPACE_ID } from '@/lib/demo/fixtures'
+import { loadDemoChatMessages, saveDemoChatMessages, clearDemoChatMessages } from '@/lib/chat/demo-storage'
+import type { ChatMessage } from '@/lib/chat/types'
 import type { ApplyEventPayload } from '@/lib/sse/types'
-
-type ChatMessage = {
-  role: 'user' | 'assistant'
-  content: string
-}
 
 export type SseStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -112,6 +110,7 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
   const [input, setInput] = useState('')
   const [status, setStatus] = useState<'idle' | 'streaming' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [hydrated, setHydrated] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   // Dedupe por toolCallId por turno: el snapshot del mensaje se re-emite en cada chunk.
   const appliedToolCallsRef = useRef<Set<string>>(new Set())
@@ -120,6 +119,76 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
   const nodes = useCanvasStore(selectNodes)
   const edges = useCanvasStore(selectEdges)
   const applyLocalEvent = useCanvasStore((s) => s.applyLocalEvent)
+
+  // Persistencia (F4.4): historial en servidor por usuario/workspace; el demo
+  // guarda en localStorage. Hydrate al montar para que el chat no se pierda al recargar.
+  useEffect(() => {
+    let cancelled = false
+
+    if (isDemo) {
+      setMessages(loadDemoChatMessages())
+      setHydrated(true)
+      return
+    }
+
+    fetch(`/api/workspaces/${workspaceId}/chat/messages`, { headers: { Accept: 'application/json' } })
+      .then(async (res) => {
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as { messages: { role: 'user' | 'assistant'; content: string }[] }
+        setMessages(data.messages.map((m) => ({ role: m.role, content: m.content })))
+      })
+      .catch((err) => console.warn('[AiChatPanel] no se pudo cargar el historial', err))
+      .finally(() => {
+        if (!cancelled) setHydrated(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceId, isDemo])
+
+  // Persiste un turno completo (usuario + asistente). Nunca rompe la UX: ante
+  // fallo loguea y deja el chat funcionando en memoria.
+  const persistTurn = useCallback(
+    async (userMsg: ChatMessage, assistantMsg: ChatMessage) => {
+      if (isDemo) {
+        setMessages((prev) => {
+          const next = [...prev]
+          saveDemoChatMessages(next)
+          return next
+        })
+        return
+      }
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceId}/chat/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [userMsg, assistantMsg] }),
+        })
+        if (!res.ok) throw new Error(`persist failed (${res.status})`)
+      } catch (err) {
+        console.warn('[AiChatPanel] no se pudo persistir el turno', err)
+      }
+    },
+    [workspaceId, isDemo]
+  )
+
+  const handleClear = useCallback(async () => {
+    if (!window.confirm('¿Borrar el historial de esta conversación?')) return
+    if (isDemo) {
+      clearDemoChatMessages()
+      setMessages([])
+      return
+    }
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/chat/messages`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`clear failed (${res.status})`)
+      setMessages([])
+    } catch (err) {
+      console.error('[AiChatPanel] no se pudo limpiar el historial', err)
+      setErrorMessage('No se pudo limpiar el historial.')
+    }
+  }, [workspaceId, isDemo])
 
   const handleSubmit = useCallback(async () => {
     const text = input.trim()
@@ -163,9 +232,11 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
       // Reserva el mensaje assistant que se irá llenando con el texto del stream.
       setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
 
+      let assistantContent = ''
       await consumeUIMessageStream(
         res.body,
         (text) => {
+          assistantContent = text
           setMessages((prev) => {
             const next = [...prev]
             next[next.length - 1] = { role: 'assistant', content: text }
@@ -180,6 +251,7 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
           },
         }
       )
+      await persistTurn(userMsg, { role: 'assistant', content: assistantContent })
       setStatus('idle')
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
@@ -189,32 +261,46 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
     } finally {
       abortRef.current = null
     }
-  }, [input, messages, status, workspaceId, isDemo, nodes, edges, applyLocalEvent])
+  }, [input, messages, status, workspaceId, isDemo, nodes, edges, applyLocalEvent, persistTurn])
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">Asistente IA</h2>
-        <span
-          className={cn(
-            'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium',
-            sseStatus === 'connected'
-              ? 'bg-emerald-500/10 text-emerald-600'
-              : 'bg-amber-500/10 text-amber-600'
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClear}
+              title="Limpiar conversación"
+              aria-label="Limpiar conversación"
+              className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Trash2 className="h-3 w-3" />
+              Limpiar
+            </button>
           )}
-        >
           <span
             className={cn(
-              'h-1.5 w-1.5 rounded-full',
-              sseStatus === 'connected' ? 'bg-emerald-500' : 'animate-pulse bg-amber-500'
+              'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium',
+              sseStatus === 'connected'
+                ? 'bg-emerald-500/10 text-emerald-600'
+                : 'bg-amber-500/10 text-amber-600'
             )}
-          />
-          {sseStatus === 'connected' ? 'En línea' : 'Reconectando…'}
-        </span>
+          >
+            <span
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                sseStatus === 'connected' ? 'bg-emerald-500' : 'animate-pulse bg-amber-500'
+              )}
+            />
+            {sseStatus === 'connected' ? 'En línea' : 'Reconectando…'}
+          </span>
+        </div>
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        {messages.length === 0 && (
+        {hydrated && messages.length === 0 && (
           <p className="text-xs text-muted-foreground">
             Pregúntale a la IA sobre tu canvas o pídele crear nodos.
           </p>
