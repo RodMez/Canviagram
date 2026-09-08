@@ -68,11 +68,27 @@ function CanvasInner({
   const setNodes = useCanvasStore((s) => s.setNodes)
   const selectNode = useCanvasStore((s) => s.selectNode)
   const applyLocalEvent = useCanvasStore((s) => s.applyLocalEvent)
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, fitView } = useReactFlow()
   const isDemo = isDemoWorkspace(workspaceId)
 
   const [createPopup, setCreatePopup] = useState<CreatePopupState | null>(null)
   const lastPaneClickRef = useRef<{ time: number; x: number; y: number } | null>(null)
+
+  // Fit one-shot cuando el grafo carga (fix canvas "en blanco"): el prop fitView
+  // de ReactFlow solo corre al montar, cuando el store aún está vacío (0 nodos),
+  // y los nodos server-side (auto-layout) quedan fuera del viewport. Al aparecer
+  // el primer batch hacemos un fitView breve; el ref por workspaceId evita pisar
+  // el viewport del usuario en cargas posteriores (SSE, nuevos nodos, etc.).
+  const fittedWorkspaceRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (nodes.length === 0) return
+    const t = setTimeout(() => {
+      if (fittedWorkspaceRef.current === workspaceId) return
+      fittedWorkspaceRef.current = workspaceId
+      fitView({ duration: 200, padding: 0.2 })
+    }, 60)
+    return () => clearTimeout(t)
+  }, [workspaceId, nodes.length, fitView])
 
   // Store → React Flow (vista derivada, unidireccional). Zustand es la fuente única.
   const rfNodes = useMemo(() => storeToRfNodes(nodes, workspaceId), [nodes, workspaceId])
@@ -198,7 +214,6 @@ function CanvasInner({
         onConnect={handleConnect}
         onSelectionChange={handleSelectionChange}
         onPaneClick={handlePaneClick}
-        fitView
         deleteKeyCode={['Backspace', 'Delete']}
         proOptions={{ hideAttribution: true }}
       >

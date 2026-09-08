@@ -47,6 +47,10 @@ export default function WorkspaceClient({
   // Carga el grafo con 2 fetches en paralelo a los endpoints EXISTENTES /nodes y /edges.
   // Filtra edges huérfanos (defensa mínima contra paginación) y llama loadGraph.
   const loadInitialGraph = useCallback(async () => {
+    // Al navegar entre workspaces (sin unmount) el store conserva el grafo previo.
+    // Vaciar antes de fetchear evita que el fitView one-shot de Canvas use el
+    // bounding box del workspace anterior (fix canvas en blanco, alg 2024-29).
+    loadGraph([], [])
     const [nodesRes, edgesRes] = await Promise.all([
       fetch(`/api/workspaces/${workspaceId}/nodes?limit=100&offset=0`),
       fetch(`/api/workspaces/${workspaceId}/edges?limit=100&offset=0`),

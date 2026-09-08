@@ -156,30 +156,16 @@ export async function softDeleteNode(workspaceId: string, nodeId: string, userId
   const now = new Date()
 
   // Transacción atómica: soft delete nodo + borrar edges huérfanos (source OR target)
-  // better-sqlite3 transaction es síncrona; usamos db.transaction con callback sync
-  try {
-    // Usamos estilo sync dentro de transaction para garantizar atomicidad
-    db.transaction((tx) => {
-      tx.update(nodes)
-        .set({ deletedAt: now, updatedAt: now } as never)
-        .where(and(eq(nodes.id, nodeId), eq(nodes.workspaceId, workspaceId)))
-        .run()
-      tx.delete(edges)
-        .where(and(eq(edges.workspaceId, workspaceId), or(eq(edges.sourceId, nodeId), eq(edges.targetId, nodeId))))
-        .run()
-    })
-  } catch (e) {
-    // Si transaction falla por ser async/promise, fallback a operaciones secuenciales pero log
-    // No silenciamos: re-throw con contexto
-    if (e instanceof Error && e.message.includes('transaction')) throw e
-    // Fallback secuencial si la API de transacción no está disponible como sync
-    // (mantenemos atomicidad best-effort)
-    await db
-      .update(nodes)
+  // better-sqlite3 transaction es síncrona: garantiza atomicidad sin fallback
+  db.transaction((tx) => {
+    tx.update(nodes)
       .set({ deletedAt: now, updatedAt: now } as never)
       .where(and(eq(nodes.id, nodeId), eq(nodes.workspaceId, workspaceId)))
-    await db.delete(edges).where(and(eq(edges.workspaceId, workspaceId), or(eq(edges.sourceId, nodeId), eq(edges.targetId, nodeId))))
-  }
+      .run()
+    tx.delete(edges)
+      .where(and(eq(edges.workspaceId, workspaceId), or(eq(edges.sourceId, nodeId), eq(edges.targetId, nodeId))))
+      .run()
+  })
 
   // Recuperar nodo actualizado para respuesta y evento
   const deleted = await db
@@ -250,72 +236,24 @@ export async function createEdge(workspaceId: string, userId: string, input: unk
   }
 
   // Validación de source/target y creación dentro de transacción atómica
-  let insertedId: string | null = null
+  // (better-sqlite3 sync): elimina el race entre validación e inserción
   const now = new Date()
   const id = uuidv4()
 
-  // Usamos transaction para evitar race entre validación y creación
-  // Si la implementación de transaction es sync, el await sobre db.transaction no es necesario pero es tolerante
-  const doCreate = async () => {
-    // Validar existen y no están borrados dentro de la misma transacción si es posible
-    // Intentamos usar db.transaction si está disponible como sync
-    let sourceOk = false
-    let targetOk = false
-
-    try {
-      db.transaction((tx) => {
-        const s = tx
-          .select()
-          .from(nodes)
-          .where(and(eq(nodes.id, parsed!.sourceId), eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
-          .get()
-        const t = tx
-          .select()
-          .from(nodes)
-          .where(and(eq(nodes.id, parsed!.targetId), eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
-          .get()
-        if (!s) throw new NotFoundError('Nodo origen no encontrado')
-        if (!t) throw new NotFoundError('Nodo destino no encontrado')
-        sourceOk = true
-        targetOk = true
-        tx.insert(edges)
-          .values({
-            id,
-            workspaceId,
-            createdBy: userId,
-            sourceId: parsed!.sourceId,
-            targetId: parsed!.targetId,
-            type: parsed!.type,
-            label: parsed!.label ?? null,
-            createdAt: now,
-          })
-          .run()
-      })
-      if (sourceOk && targetOk) {
-        insertedId = id
-        return
-      }
-    } catch (e) {
-      if (e instanceof NotFoundError || e instanceof ValidationError) throw e
-      // Si falla la API sync de transaction (ej. async promise), fallback a validación + insert secuencial
-    }
-
-    // Fallback secuencial (sin garantía atómica estricta pero funcional)
-    const source = await db
+  db.transaction((tx) => {
+    const source = tx
       .select()
       .from(nodes)
       .where(and(eq(nodes.id, parsed!.sourceId), eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
       .get()
     if (!source) throw new NotFoundError('Nodo origen no encontrado')
-    const target = await db
+    const target = tx
       .select()
       .from(nodes)
       .where(and(eq(nodes.id, parsed!.targetId), eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
       .get()
     if (!target) throw new NotFoundError('Nodo destino no encontrado')
-
-    const [inserted] = await db
-      .insert(edges)
+    tx.insert(edges)
       .values({
         id,
         workspaceId,
@@ -326,42 +264,24 @@ export async function createEdge(workspaceId: string, userId: string, input: unk
         label: parsed!.label ?? null,
         createdAt: now,
       })
-      .returning()
-    insertedId = inserted?.id ?? id
-    return inserted
-  }
+      .run()
+  })
 
-  let insertedEdge: unknown = null
-  try {
-    const res = await doCreate()
-    if (res && typeof res === 'object' && 'id' in (res as object)) insertedEdge = res
-  } catch (e) {
-    throw e
-  }
+  // Recuperar la fila insertada para el evento y la respuesta
+  const finalEdge = await db.select().from(edges).where(eq(edges.id, id)).get()
 
-  // Si la inserción fue vía transaction sync, necesitamos recuperar la fila
-  let finalEdge: unknown = insertedEdge
-  if (!finalEdge && insertedId) {
-    finalEdge = await db.select().from(edges).where(eq(edges.id, insertedId)).get()
-    if (!finalEdge) {
-      finalEdge = { id, workspaceId, createdBy: userId, ...parsed, createdAt: now }
-    }
-  }
+  publish(workspaceId, 'edge:created', finalEdge ?? { id, workspaceId, createdBy: userId, ...parsed, createdAt: now })
 
-  // Si aún no tenemos finalEdge (fallback), intentar fetch por id
-  if (!finalEdge) {
-    const fetched = await db.select().from(edges).where(eq(edges.id, id)).get()
-    finalEdge = fetched ?? { id, workspaceId, createdBy: userId, ...parsed, createdAt: now }
-  }
-
-  publish(workspaceId, 'edge:created', finalEdge)
-
-  // Retornar entidad creada
-  if (finalEdge && typeof finalEdge === 'object' && 'id' in (finalEdge as object)) {
-    return finalEdge as typeof edges.$inferSelect
-  }
-  // Si todo falla, retornar stub
-  return { id, workspaceId, createdBy: userId, sourceId: parsed!.sourceId, targetId: parsed!.targetId, type: parsed!.type, label: parsed!.label ?? null, createdAt: now } as unknown as typeof edges.$inferSelect
+  return (finalEdge ?? {
+    id,
+    workspaceId,
+    createdBy: userId,
+    sourceId: parsed!.sourceId,
+    targetId: parsed!.targetId,
+    type: parsed!.type,
+    label: parsed!.label ?? null,
+    createdAt: now,
+  }) as typeof edges.$inferSelect
 }
 
 export async function updateEdge(

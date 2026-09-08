@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { db } from '@/lib/db'
 import { users, workspaces } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { ValidationError, ForbiddenError } from '@/lib/errors'
+import { ForbiddenError } from '@/lib/errors'
 
 vi.mock('@/lib/telegram/chats', () => ({
   findBinding: vi.fn(),
@@ -15,7 +15,6 @@ vi.mock('@/lib/ai/provider', () => ({
   getLLM: vi.fn(),
 }))
 vi.mock('@/lib/canvas-service', () => ({
-  createNode: vi.fn(),
   getWorkspaceGraph: vi.fn(),
 }))
 vi.mock('@/lib/chat/repository', () => ({
@@ -26,13 +25,24 @@ vi.mock('@/lib/chat/repository', () => ({
 }))
 vi.mock('ai', () => ({
   generateText: vi.fn(),
+  isStepCount: vi.fn(() => vi.fn()),
+}))
+vi.mock('@/lib/ai/tools', () => ({
+  buildTools: vi.fn(() => ({
+    createNode: {},
+    updateNode: {},
+    deleteNode: {},
+    createEdge: {},
+    deleteEdge: {},
+    queryGraph: {},
+  })),
 }))
 
 import { parseCommand, handleLink, handleUnlink, handleMessage, escapeHtml, createTelegramBot } from '@/lib/telegram/bot'
 import { createLinkCode, _clear as clearLinkStore } from '@/lib/telegram/link-store'
 import { findBinding, upsertBinding, deleteBinding } from '@/lib/telegram/chats'
 import { isAIEnabled, getLLM } from '@/lib/ai/provider'
-import { createNode, getWorkspaceGraph } from '@/lib/canvas-service'
+import { getWorkspaceGraph } from '@/lib/canvas-service'
 import { generateText } from 'ai'
 import { buildTelegramChatKey, listChatMessages, appendAndTrimChatMessages, clearChatMessages } from '@/lib/chat/repository'
 import { makeUpdate, makeCtxStub, FIXED_CHAT_ID, FIXED_USER_ID } from '@/__tests__/helpers/telegram'
@@ -42,7 +52,6 @@ const mUpsertBinding = vi.mocked(upsertBinding)
 const mDeleteBinding = vi.mocked(deleteBinding)
 const mIsAIEnabled = vi.mocked(isAIEnabled)
 const mGetLLM = vi.mocked(getLLM)
-const mCreateNode = vi.mocked(createNode)
 const mGetWorkspaceGraph = vi.mocked(getWorkspaceGraph)
 const mGenerateText = vi.mocked(generateText)
 const mBuildTelegramChatKey = vi.mocked(buildTelegramChatKey)
@@ -197,7 +206,7 @@ describe('lib/telegram/bot', () => {
       expect(mGetLLM).not.toHaveBeenCalled()
     })
 
-    it('binding + shouldCreate → createNode con binding.workspaceId y binding.userId (frontera)', async () => {
+    it('binding + texto del asistente → reply (escapado), tools de paridad y memoria persistida', async () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
@@ -207,33 +216,41 @@ describe('lib/telegram/bot', () => {
       })
       mIsAIEnabled.mockReturnValue(true)
       mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
-      mGenerateText.mockResolvedValue({
-        text: JSON.stringify({ shouldCreate: true, node: { type: 'task', title: 'x', status: 'todo' }, reply: null }),
-      } as never)
-      mCreateNode.mockResolvedValue({ id: 'node-1', type: 'task', title: 'x' } as never)
+      mGenerateText.mockResolvedValue({ text: 'He creado una tarea "Comprar" & más' } as never)
 
       const ctx = makeCtxStub()
-      await handleMessage(ctx, 'crea una tarea x')
+      await handleMessage(ctx, 'crea una tarea')
 
       expect(mGetLLM).toHaveBeenCalled()
-      expect(mCreateNode).toHaveBeenCalledWith(wsId, ownerId, { type: 'task', title: 'x', status: 'todo' })
-      expect(ctx.reply).toHaveBeenCalledWith(
-        expect.stringContaining('✅ Nodo creado: <b>x</b> (task · node-1)'),
-        { parse_mode: 'HTML' }
+      // Paridad con el chat web: mismas tools + stopWhen limitando iteraciones
+      expect(mGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          system: expect.stringContaining('crear, actualizar y'),
+          tools: expect.objectContaining({
+            createNode: expect.anything(),
+            updateNode: expect.anything(),
+            deleteNode: expect.anything(),
+            createEdge: expect.anything(),
+            deleteEdge: expect.anything(),
+            queryGraph: expect.anything(),
+          }),
+          stopWhen: expect.any(Function),
+        })
       )
+      expect(ctx.reply).toHaveBeenCalledWith('He creado una tarea "Comprar" &amp; más', { parse_mode: 'HTML' })
       // Memoria: persiste user + assistant del turno con source telegram
       expect(mAppendAndTrimChatMessages).toHaveBeenCalledWith({
         workspaceId: wsId,
         chatKey: mBuildTelegramChatKey(String(FIXED_CHAT_ID), String(FIXED_USER_ID)),
         source: 'telegram',
         messages: [
-          { role: 'user', content: 'crea una tarea x' },
-          { role: 'assistant', content: 'Nodo creado: x (task · node-1)' },
+          { role: 'user', content: 'crea una tarea' },
+          { role: 'assistant', content: 'He creado una tarea "Comprar" & más' },
         ],
       })
     })
 
-    it('shouldCreate=false + reply → solo reply, createNode NO llamado', async () => {
+    it('texto LLM vacío → reply fallback y NO persiste', async () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
@@ -243,28 +260,35 @@ describe('lib/telegram/bot', () => {
       })
       mIsAIEnabled.mockReturnValue(true)
       mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
-      mGenerateText.mockResolvedValue({
-        text: JSON.stringify({ shouldCreate: false, node: null, reply: 'Hola' }),
-      } as never)
+      mGenerateText.mockResolvedValue({ text: '   ' } as never)
+
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'crea algo')
+
+      expect(ctx.reply).toHaveBeenCalledWith('Listo. Revisa tu canvas para ver los cambios.', { parse_mode: 'HTML' })
+      expect(mAppendAndTrimChatMessages).not.toHaveBeenCalled()
+    })
+
+    it('respuesta LLM con HTML se escapa antes de enviar (XSS)', async () => {
+      mFindBinding.mockResolvedValue({
+        telegramChatId: String(FIXED_CHAT_ID),
+        telegramUserId: String(FIXED_USER_ID),
+        workspaceId: wsId,
+        userId: ownerId,
+        createdAt: new Date(),
+      })
+      mIsAIEnabled.mockReturnValue(true)
+      mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
+      mGenerateText.mockResolvedValue({ text: '<script>alert(1)</script>' } as never)
 
       const ctx = makeCtxStub()
       await handleMessage(ctx, 'hola')
 
-      expect(mCreateNode).not.toHaveBeenCalled()
-      expect(ctx.reply).toHaveBeenCalledWith('Hola', { parse_mode: 'HTML' })
-      // El reply-corto también se guarda en memoria
-      expect(mAppendAndTrimChatMessages).toHaveBeenCalledWith({
-        workspaceId: wsId,
-        chatKey: expect.any(String),
-        source: 'telegram',
-        messages: [
-          { role: 'user', content: 'hola' },
-          { role: 'assistant', content: 'Hola' },
-        ],
-      })
+      expect(ctx.reply).toHaveBeenCalledWith('&lt;script&gt;alert(1)&lt;/script&gt;', { parse_mode: 'HTML' })
+      expect(mAppendAndTrimChatMessages).toHaveBeenCalled()
     })
 
-    it('LLM devuelve JSON no válido → reply amigable sin crash y sin persistir', async () => {
+    it('graph fetch lanza ForbiddenError → reply "sin permisos" y NO llama al LLM', async () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
@@ -273,63 +297,13 @@ describe('lib/telegram/bot', () => {
         createdAt: new Date(),
       })
       mIsAIEnabled.mockReturnValue(true)
-      mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
-      mGenerateText.mockResolvedValue({ text: '{"shouldCreate":true, node: rotos' } as never)
-
-      const ctx = makeCtxStub()
-      await handleMessage(ctx, 'crea algo confuso')
-
-      expect(ctx.reply).toHaveBeenCalledWith(
-        'No pude interpretar tu mensaje. Intenta de nuevo con una instrucción más clara.',
-        { parse_mode: 'HTML' }
-      )
-      expect(mCreateNode).not.toHaveBeenCalled()
-      expect(mAppendAndTrimChatMessages).not.toHaveBeenCalled()
-    })
-
-    it('createNode lanza ValidationError (status en no-task) → reply amigable sin crash', async () => {
-      mFindBinding.mockResolvedValue({
-        telegramChatId: String(FIXED_CHAT_ID),
-        telegramUserId: String(FIXED_USER_ID),
-        workspaceId: wsId,
-        userId: ownerId,
-        createdAt: new Date(),
-      })
-      mIsAIEnabled.mockReturnValue(true)
-      mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
-      mGenerateText.mockResolvedValue({
-        text: JSON.stringify({ shouldCreate: true, node: { type: 'note', title: 'x', status: 'todo' }, reply: null }),
-      } as never)
-      mCreateNode.mockRejectedValue(new ValidationError('Solo los nodos de tipo task pueden tener estado'))
-
-      const ctx = makeCtxStub()
-      await handleMessage(ctx, 'crea una nota')
-
-      expect(ctx.reply).toHaveBeenCalledWith(
-        expect.stringContaining('No pude crear el nodo: Solo los nodos de tipo task pueden tener estado'),
-        { parse_mode: 'HTML' }
-      )
-    })
-
-    it('createNode lanza ForbiddenError (usuario degradado) → reply "sin permisos"', async () => {
-      mFindBinding.mockResolvedValue({
-        telegramChatId: String(FIXED_CHAT_ID),
-        telegramUserId: String(FIXED_USER_ID),
-        workspaceId: wsId,
-        userId: ownerId,
-        createdAt: new Date(),
-      })
-      mIsAIEnabled.mockReturnValue(true)
-      mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
-      mGenerateText.mockResolvedValue({
-        text: JSON.stringify({ shouldCreate: true, node: { type: 'task', title: 'x' }, reply: null }),
-      } as never)
-      mCreateNode.mockRejectedValue(new ForbiddenError('Se requiere rol mínimo: writer'))
+      mGetWorkspaceGraph.mockRejectedValue(new ForbiddenError('Se requiere rol mínimo: writer'))
 
       const ctx = makeCtxStub()
       await handleMessage(ctx, 'crea una tarea')
 
       expect(ctx.reply).toHaveBeenCalledWith('Sin permisos para crear nodos en este workspace.', { parse_mode: 'HTML' })
+      expect(mGenerateText).not.toHaveBeenCalled()
     })
   })
 
