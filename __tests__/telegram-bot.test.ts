@@ -9,6 +9,9 @@ vi.mock('@/lib/telegram/chats', () => ({
   findBinding: vi.fn(),
   upsertBinding: vi.fn(),
   deleteBinding: vi.fn(),
+  setActiveWorkspace: vi.fn(),
+  resetActiveWorkspace: vi.fn(),
+  touchLastActivity: vi.fn(),
 }))
 vi.mock('@/lib/ai/provider', () => ({
   isAIEnabled: vi.fn(),
@@ -38,9 +41,9 @@ vi.mock('@/lib/ai/tools', () => ({
   })),
 }))
 
-import { parseCommand, handleLink, handleUnlink, handleMessage, escapeHtml, createTelegramBot } from '@/lib/telegram/bot'
+import { parseCommand, handleLink, handleUnlink, handleMessage, handleList, handleUse, handleStatus, escapeHtml, createTelegramBot } from '@/lib/telegram/bot'
 import { createLinkCode, _clear as clearLinkStore } from '@/lib/telegram/link-store'
-import { findBinding, upsertBinding, deleteBinding } from '@/lib/telegram/chats'
+import { findBinding, upsertBinding, deleteBinding, setActiveWorkspace, resetActiveWorkspace, touchLastActivity } from '@/lib/telegram/chats'
 import { isAIEnabled, getLLM } from '@/lib/ai/provider'
 import { getWorkspaceGraph } from '@/lib/canvas-service'
 import { generateText } from 'ai'
@@ -50,6 +53,8 @@ import { makeUpdate, makeCtxStub, FIXED_CHAT_ID, FIXED_USER_ID } from '@/__tests
 const mFindBinding = vi.mocked(findBinding)
 const mUpsertBinding = vi.mocked(upsertBinding)
 const mDeleteBinding = vi.mocked(deleteBinding)
+const mSetActiveWorkspace = vi.mocked(setActiveWorkspace)
+const mResetActiveWorkspace = vi.mocked(resetActiveWorkspace)
 const mIsAIEnabled = vi.mocked(isAIEnabled)
 const mGetLLM = vi.mocked(getLLM)
 const mGetWorkspaceGraph = vi.mocked(getWorkspaceGraph)
@@ -106,6 +111,12 @@ describe('lib/telegram/bot', () => {
     it('/unknown → nulo (comando desconocido)', () => {
       expect(parseCommand('/unknown')).toEqual({ kind: 'plain' })
     })
+
+    it('/lista, /usar slug y /estado son comandos reconocidos', () => {
+      expect(parseCommand('/lista')).toEqual({ kind: 'command', name: 'lista', args: [] })
+      expect(parseCommand('/usar mi-proyecto')).toEqual({ kind: 'command', name: 'usar', args: ['MI-PROYECTO'] })
+      expect(parseCommand('/estado')).toEqual({ kind: 'command', name: 'estado', args: [] })
+    })
   })
 
   describe('handleLink', () => {
@@ -116,11 +127,11 @@ describe('lib/telegram/bot', () => {
       await handleLink(ctx, code)
 
       expect(mUpsertBinding).toHaveBeenCalledWith(String(FIXED_CHAT_ID), String(FIXED_USER_ID), {
-        workspaceId: wsId,
         userId: ownerId,
+        workspaceId: wsId,
       })
       expect(ctx.reply).toHaveBeenCalledWith(
-        expect.stringContaining('✅ Vinculado a «Bot WS»'),
+        expect.stringContaining('Workspace activo: «Bot WS»'),
         { parse_mode: 'HTML' }
       )
     })
@@ -166,7 +177,8 @@ describe('lib/telegram/bot', () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
-        workspaceId: wsId,
+        activeWorkspaceId: wsId,
+        lastActivityAt: new Date(),
         userId: ownerId,
         createdAt: new Date(),
       })
@@ -178,7 +190,101 @@ describe('lib/telegram/bot', () => {
         wsId,
         mBuildTelegramChatKey(String(FIXED_CHAT_ID), String(FIXED_USER_ID))
       )
-      expect(ctx.reply).toHaveBeenCalledWith('🔓 Chat desvinculado del workspace.', { parse_mode: 'HTML' })
+      expect(ctx.reply).toHaveBeenCalledWith('🔓 Chat desvinculado de tu cuenta.', { parse_mode: 'HTML' })
+    })
+  })
+
+  describe('comandos de workspace (Fase 1: /lista, /usar, /estado)', () => {
+    it('/lista muestra los workspaces de la cuenta y marca el activo', async () => {
+      mFindBinding.mockResolvedValue({
+        telegramChatId: String(FIXED_CHAT_ID),
+        telegramUserId: String(FIXED_USER_ID),
+        activeWorkspaceId: wsId,
+        lastActivityAt: new Date(),
+        userId: ownerId,
+        createdAt: new Date(),
+      })
+      const ctx = makeCtxStub()
+      await handleList(ctx)
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('✅ (activo)'),
+        { parse_mode: 'HTML' }
+      )
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringMatching(/Bot WS/),
+        { parse_mode: 'HTML' }
+      )
+    })
+
+    it('sin binding → /lista pide /link primero', async () => {
+      mFindBinding.mockResolvedValue(null)
+      const ctx = makeCtxStub()
+      await handleList(ctx)
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('no está vinculado'),
+        { parse_mode: 'HTML' }
+      )
+    })
+
+    it('/usar <slug> válido → setActiveWorkspace y reply de confirmación', async () => {
+      mFindBinding.mockResolvedValue({
+        telegramChatId: String(FIXED_CHAT_ID),
+        telegramUserId: String(FIXED_USER_ID),
+        activeWorkspaceId: null,
+        lastActivityAt: new Date(),
+        userId: ownerId,
+        createdAt: new Date(),
+      })
+      const ctx = makeCtxStub()
+      await handleUse(ctx, `bot-ws-${wsId.slice(0, 8)}`)
+      expect(mSetActiveWorkspace).toHaveBeenCalledWith(String(FIXED_CHAT_ID), String(FIXED_USER_ID), wsId)
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('Workspace activo'),
+        { parse_mode: 'HTML' }
+      )
+    })
+
+    it('/usar slug inexistente → reply de error y NO cambia', async () => {
+      mFindBinding.mockResolvedValue({
+        telegramChatId: String(FIXED_CHAT_ID),
+        telegramUserId: String(FIXED_USER_ID),
+        activeWorkspaceId: null,
+        lastActivityAt: new Date(),
+        userId: ownerId,
+        createdAt: new Date(),
+      })
+      const ctx = makeCtxStub()
+      await handleUse(ctx, 'no-existe')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('No encontré el workspace'),
+        { parse_mode: 'HTML' }
+      )
+      expect(mSetActiveWorkspace).not.toHaveBeenCalled()
+    })
+
+    it('/estado resume cuenta, workspace activo y última actividad', async () => {
+      mFindBinding.mockResolvedValue({
+        telegramChatId: String(FIXED_CHAT_ID),
+        telegramUserId: String(FIXED_USER_ID),
+        activeWorkspaceId: wsId,
+        lastActivityAt: new Date('2026-09-01T12:00:00.000Z'),
+        userId: ownerId,
+        createdAt: new Date(),
+      })
+      const ctx = makeCtxStub()
+      await handleStatus(ctx)
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringMatching(/Estado de este chat/),
+        { parse_mode: 'HTML' }
+      )
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('<b>Bot Owner</b>'),
+        { parse_mode: 'HTML' }
+      )
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('«Bot WS»'),
+        { parse_mode: 'HTML' }
+      )
     })
   })
 
@@ -195,7 +301,8 @@ describe('lib/telegram/bot', () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
-        workspaceId: wsId,
+        activeWorkspaceId: wsId,
+        lastActivityAt: new Date(),
         userId: ownerId,
         createdAt: new Date(),
       })
@@ -210,7 +317,8 @@ describe('lib/telegram/bot', () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
-        workspaceId: wsId,
+        activeWorkspaceId: wsId,
+        lastActivityAt: new Date(),
         userId: ownerId,
         createdAt: new Date(),
       })
@@ -254,7 +362,8 @@ describe('lib/telegram/bot', () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
-        workspaceId: wsId,
+        activeWorkspaceId: wsId,
+        lastActivityAt: new Date(),
         userId: ownerId,
         createdAt: new Date(),
       })
@@ -273,7 +382,8 @@ describe('lib/telegram/bot', () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
-        workspaceId: wsId,
+        activeWorkspaceId: wsId,
+        lastActivityAt: new Date(),
         userId: ownerId,
         createdAt: new Date(),
       })
@@ -288,11 +398,12 @@ describe('lib/telegram/bot', () => {
       expect(mAppendAndTrimChatMessages).toHaveBeenCalled()
     })
 
-    it('graph fetch lanza ForbiddenError → reply "sin permisos" y NO llama al LLM', async () => {
+    it('graph fetch lanza ForbiddenError → reset activo + reply "ya no disponible" y NO llama al LLM', async () => {
       mFindBinding.mockResolvedValue({
         telegramChatId: String(FIXED_CHAT_ID),
         telegramUserId: String(FIXED_USER_ID),
-        workspaceId: wsId,
+        activeWorkspaceId: wsId,
+        lastActivityAt: new Date(),
         userId: ownerId,
         createdAt: new Date(),
       })
@@ -302,7 +413,11 @@ describe('lib/telegram/bot', () => {
       const ctx = makeCtxStub()
       await handleMessage(ctx, 'crea una tarea')
 
-      expect(ctx.reply).toHaveBeenCalledWith('Sin permisos para crear nodos en este workspace.', { parse_mode: 'HTML' })
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('ya no está disponible'),
+        { parse_mode: 'HTML' }
+      )
+      expect(vi.mocked(mResetActiveWorkspace)).toHaveBeenCalledWith(String(FIXED_CHAT_ID), String(FIXED_USER_ID))
       expect(mGenerateText).not.toHaveBeenCalled()
     })
   })

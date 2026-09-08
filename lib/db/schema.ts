@@ -231,6 +231,9 @@ export const nodes = sqliteTable(
     status: text('status', { enum: NODE_STATUSES }),
     positionX: real('position_x').notNull().default(0.0),
     positionY: real('position_y').notNull().default(0.0),
+    dueDate: integer('due_date', { mode: 'timestamp' }),
+    reminderOffsetMin: integer('reminder_offset_min'),
+    notifiedAt: integer('notified_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -285,17 +288,29 @@ export const edges = sqliteTable(
 // TELEGRAM
 // ============================================================
 
+/**
+ * Vinculación de un chat de Telegram a una CUENTA de Canviagram.
+ * - userId: cuenta a la que se vincula el chat (una cuenta = chat).
+ * - activeWorkspaceId: workspace donde el usuario trabaja AHORA desde este chat
+ *   (nullable; SET NULL al borrar el workspace). El chat puede re-vincularse a
+ *   cualquier workspace del usuario con /usar <slug> sin desvincular la cuenta.
+ * - lastActivityAt: touch en cada mensaje del bot (estado "vivo").
+ * La frontera de seguridad se mantiene: workspaceId/userId NUNCA vienen del texto.
+ */
 export const telegramChats = sqliteTable(
   'telegram_chats',
   {
     telegramChatId: text('telegram_chat_id').notNull(),
     telegramUserId: text('telegram_user_id').notNull(),
-    workspaceId: text('workspace_id')
-      .notNull()
-      .references(() => workspaces.id, { onDelete: 'cascade' }),
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    activeWorkspaceId: text('active_workspace_id').references(() => workspaces.id, {
+      onDelete: 'set null',
+    }),
+    lastActivityAt: integer('last_activity_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -303,8 +318,8 @@ export const telegramChats = sqliteTable(
   (t) => ({
     pk: primaryKey({ columns: [t.telegramChatId, t.telegramUserId] }),
     chatIdx: index('idx_telegram_chat').on(t.telegramChatId),
-    workspaceIdx: index('idx_telegram_workspace').on(t.workspaceId),
-    userIdx: index('idx_telegram_user').on(t.userId),
+    activeWorkspaceIdx: index('idx_telegram_active_workspace').on(t.activeWorkspaceId),
+    userIdIdx: index('idx_telegram_user').on(t.userId),
   })
 )
 
@@ -350,6 +365,70 @@ export const chatMessages = sqliteTable(
       t.createdAt
     ),
     chatKeyIdx: index('idx_chat_messages_chat_key').on(t.chatKey),
+  })
+)
+
+// ============================================================
+// NOTIFICACIONES
+// ============================================================
+
+export const NOTIFICATION_KINDS = ['reminder', 'mention', 'system'] as const
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
+
+/**
+ * Campana in-app (Fase 3): notificaciones por usuario+workspace, visibles
+ * sin importar el workspace activo. El sweeper inserta una fila por miembro;
+ * el lector (campana) las marca read.
+ */
+export const notifications = sqliteTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    nodeId: text('node_id').references(() => nodes.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: NOTIFICATION_KINDS }).notNull().default('system'),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    readAt: integer('read_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => ({
+    userUnreadIdx: index('idx_notifications_user_unread').on(t.userId, t.readAt, t.createdAt),
+  })
+)
+
+/**
+ * Suscripciones Web Push (Fase 3). Una suscripción es por usuario+workspace
+ * (el push se envía a todos los miembros con suscripción, sin importar el
+ * workspace activo en Telegram).
+ */
+export const webPushSubscriptions = sqliteTable(
+  'web_push_subscriptions',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    keysAuth: text('keys_auth').notNull(),
+    keysP256dh: text('keys_p256dh').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => ({
+    endpointIdx: uniqueIndex('idx_webpush_endpoint').on(t.endpoint),
+    userIdx: index('idx_webpush_user').on(t.userId),
   })
 )
 
@@ -424,19 +503,45 @@ export const edgesRelations = relations(edges, ({ one }) => ({
 }))
 
 export const telegramChatsRelations = relations(telegramChats, ({ one }) => ({
-  workspace: one(workspaces, {
-    fields: [telegramChats.workspaceId],
-    references: [workspaces.id],
-  }),
   user: one(users, {
     fields: [telegramChats.userId],
     references: [users.id],
+  }),
+  activeWorkspace: one(workspaces, {
+    fields: [telegramChats.activeWorkspaceId],
+    references: [workspaces.id],
   }),
 }))
 
 export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
   workspace: one(workspaces, {
     fields: [chatMessages.workspaceId],
+    references: [workspaces.id],
+  }),
+}))
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+  workspace: one(workspaces, {
+    fields: [notifications.workspaceId],
+    references: [workspaces.id],
+  }),
+  node: one(nodes, {
+    fields: [notifications.nodeId],
+    references: [nodes.id],
+  }),
+}))
+
+export const webPushSubscriptionsRelations = relations(webPushSubscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [webPushSubscriptions.userId],
+    references: [users.id],
+  }),
+  workspace: one(workspaces, {
+    fields: [webPushSubscriptions.workspaceId],
     references: [workspaces.id],
   }),
 }))
@@ -479,3 +584,9 @@ export type NewTelegramChat = typeof telegramChats.$inferInsert
 
 export type ChatMessage = typeof chatMessages.$inferSelect
 export type NewChatMessage = typeof chatMessages.$inferInsert
+
+export type Notification = typeof notifications.$inferSelect
+export type NewNotification = typeof notifications.$inferInsert
+
+export type WebPushSubscription = typeof webPushSubscriptions.$inferSelect
+export type NewWebPushSubscription = typeof webPushSubscriptions.$inferInsert
