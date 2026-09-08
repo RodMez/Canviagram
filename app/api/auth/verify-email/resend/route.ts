@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { users, emailVerificationTokens } from '@/lib/db/schema'
 import { sendVerificationEmail } from '@/lib/email/brevo'
+import { hashToken } from '@/lib/auth/tokens'
 import { eq, isNull, and } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { z } from 'zod'
@@ -42,34 +43,19 @@ export async function POST(req: Request) {
     const now = new Date()
     const id = uuidv4()
 
-    try {
-      db.transaction((tx) => {
-        tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, user.id)).run()
-        tx.insert(emailVerificationTokens)
-          .values({
-            id,
-            userId: user.id,
-            token: newToken,
-            expiresAt,
-            createdAt: now,
-          })
-          .run()
-      })
-    } catch (txError) {
-      const isTxUnsupported = txError instanceof Error && /transaction/i.test(txError.message)
-      if (isTxUnsupported) {
-        await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, user.id))
-        await db.insert(emailVerificationTokens).values({
+    // Transacción atómica (better-sqlite3 sync): reemplaza tokens pendientes
+    db.transaction((tx) => {
+      tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, user.id)).run()
+      tx.insert(emailVerificationTokens)
+        .values({
           id,
           userId: user.id,
-          token: newToken,
+          tokenHash: hashToken(newToken),
           expiresAt,
           createdAt: now,
         })
-      } else {
-        throw txError
-      }
-    }
+        .run()
+    })
 
     try {
       await sendVerificationEmail(user.email, newToken)

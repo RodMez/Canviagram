@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { emailVerificationTokens, users } from '@/lib/db/schema'
+import { hashToken } from '@/lib/auth/tokens'
 import { eq } from 'drizzle-orm'
 
 export async function GET(
@@ -21,7 +22,7 @@ export async function GET(
     const record = await db
       .select()
       .from(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.token, token))
+      .where(eq(emailVerificationTokens.tokenHash, hashToken(token)))
       .get()
 
     if (!record) {
@@ -34,25 +35,13 @@ export async function GET(
     }
 
     // Transacción atómica: marcar email verificado + borrar token de un solo uso
-    try {
-      db.transaction((tx) => {
-        tx.update(users)
-          .set({ emailVerified: true, updatedAt: now })
-          .where(eq(users.id, record.userId))
-          .run()
-        tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token)).run()
-      })
-    } catch (txError) {
-      // Si la API de transaction falla por incompatibilidad async, fallback a operaciones secuenciales
-      // Mantenemos manejo explícito de error en vez de silenciar
-      const isTxUnsupported = txError instanceof Error && /transaction/i.test(txError.message)
-      if (isTxUnsupported) {
-        await db.update(users).set({ emailVerified: true, updatedAt: now }).where(eq(users.id, record.userId))
-        await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token))
-      } else {
-        throw txError
-      }
-    }
+    db.transaction((tx) => {
+      tx.update(users)
+        .set({ emailVerified: true, updatedAt: now })
+        .where(eq(users.id, record.userId))
+        .run()
+      tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.tokenHash, hashToken(token))).run()
+    })
 
     return NextResponse.json({ success: true, message: 'Email verificado correctamente' })
   } catch (error) {

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { db } from '@/lib/db'
 import { users, workspaces, workspaceMembers, invitations } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
+import { hashToken } from '@/lib/auth/tokens'
 import * as workspaceAdmin from '@/lib/workspace-admin'
 
 // Mock sendInvitation para no enviar emails reales en tests
@@ -390,7 +391,9 @@ describe('workspace-admin service', () => {
         role: 'viewer',
       })
       expect(second.status).toBe('resent')
-      expect(second.invitation.token).toBe(first.invitation.token)
+      expect(second.invitation.id).toBe(first.invitation.id)
+      expect(first.invitation.tokenHash).toBeTruthy()
+      expect(second.invitation.tokenHash).not.toBe(first.invitation.tokenHash)
 
       await db.delete(invitations).where(
         and(eq(invitations.workspaceId, wsId), eq(invitations.email, inviteEmail))
@@ -448,7 +451,7 @@ describe('workspace-admin service', () => {
         workspaceId: wsId,
         email: inviteEmail,
         role: 'member',
-        token,
+        tokenHash: hashToken(token),
         invitedBy: ownerId,
         expiresAt,
       })
@@ -458,7 +461,7 @@ describe('workspace-admin service', () => {
       expect(result.workspace.name).toBe('WSA Test')
 
       // Verificar acceptedAt fue seteado
-      const inv = await db.select().from(invitations).where(eq(invitations.token, token)).get()
+      const inv = await db.select().from(invitations).where(eq(invitations.tokenHash, hashToken(token))).get()
       expect(inv!.acceptedAt).not.toBeNull()
 
       // Verificar member fue creado
@@ -472,7 +475,7 @@ describe('workspace-admin service', () => {
       await db.delete(workspaceMembers).where(
         and(eq(workspaceMembers.workspaceId, wsId), eq(workspaceMembers.userId, inviteUserId))
       )
-      await db.delete(invitations).where(eq(invitations.token, token))
+      await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
       await cleanupUser(inviteUserId)
     })
 
@@ -490,7 +493,7 @@ describe('workspace-admin service', () => {
         workspaceId: wsId,
         email: 'expired@example.com',
         role: 'member',
-        token,
+        tokenHash: hashToken(token),
         invitedBy: ownerId,
         expiresAt,
       })
@@ -503,7 +506,7 @@ describe('workspace-admin service', () => {
         expect((e as Error).message).toBe('La invitación ha expirado')
       }
 
-      await db.delete(invitations).where(eq(invitations.token, token))
+      await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
     })
 
     it('invitación ya utilizada → GoneError', async () => {
@@ -514,7 +517,7 @@ describe('workspace-admin service', () => {
         workspaceId: wsId,
         email: 'used@example.com',
         role: 'member',
-        token,
+        tokenHash: hashToken(token),
         invitedBy: ownerId,
         expiresAt,
         acceptedAt: new Date(),
@@ -528,7 +531,7 @@ describe('workspace-admin service', () => {
         expect((e as Error).message).toBe('La invitación ya fue utilizada')
       }
 
-      await db.delete(invitations).where(eq(invitations.token, token))
+      await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
     })
 
     it('email de sesión ≠ invitation.email → ForbiddenError', async () => {
@@ -539,7 +542,7 @@ describe('workspace-admin service', () => {
         workspaceId: wsId,
         email: 'other-person@example.com',
         role: 'member',
-        token,
+        tokenHash: hashToken(token),
         invitedBy: ownerId,
         expiresAt,
       })
@@ -548,7 +551,7 @@ describe('workspace-admin service', () => {
         workspaceAdmin.acceptInvitation(token, ownerId)
       ).rejects.toThrow()
 
-      await db.delete(invitations).where(eq(invitations.token, token))
+      await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
     })
   })
 

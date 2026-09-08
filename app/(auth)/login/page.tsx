@@ -20,6 +20,7 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const nextParam = sanitizeNext(searchParams.get("next"))
+  const resetParam = searchParams.get("reset") === "1"
 
   const [form, setForm] = useState({ email: "", password: "" })
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
@@ -93,6 +94,12 @@ function LoginForm() {
     <div>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">Inicia sesión</h1>
 
+      {resetParam ? (
+        <div role="status" className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700 border border-green-200">
+          Contraseña actualizada. Inicia sesión con tu nueva contraseña.
+        </div>
+      ) : null}
+
       {rootError ? (
         <div role="alert" className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 border border-red-200">
           {rootError}
@@ -144,9 +151,9 @@ function LoginForm() {
       </form>
 
       <div className="mt-4 text-center">
-        <span className="text-sm text-zinc-400 cursor-not-allowed" title="Próximamente">
+        <Link href="/forgot-password" className="text-sm text-zinc-600 underline">
           ¿Olvidaste tu contraseña?
-        </span>
+        </Link>
       </div>
 
       <p className="mt-6 text-center text-sm text-zinc-600">

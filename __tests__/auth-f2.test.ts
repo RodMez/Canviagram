@@ -340,7 +340,7 @@ describe('F2.1 Auth Backend', () => {
       expect(j.message).toMatch(/Si el email existe/)
       const after = await db.select().from(emailVerificationTokens).where(eq(emailVerificationTokens.userId, jReg.user.id)).get()
       expect(after).toBeDefined()
-      expect(after!.token).not.toBe(before!.token)
+      expect(after!.tokenHash).not.toBe(before!.tokenHash)
       expect(after!.expiresAt.getTime()).toBeGreaterThan(Date.now() + 23 * 60 * 60 * 1000)
     })
 

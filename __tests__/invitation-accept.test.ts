@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { db } from '@/lib/db'
 import { users, workspaces, workspaceMembers, invitations } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
+import { hashToken } from '@/lib/auth/tokens'
 
 // Mock getSession para probar rutas autenticadas
 vi.mock('@/lib/auth/session', () => ({
@@ -51,7 +52,7 @@ async function createValidInvitation(email: string, role: 'admin' | 'member' | '
     workspaceId: wsId,
     email,
     role,
-    token,
+    tokenHash: hashToken(token),
     invitedBy: ownerId,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   })
@@ -128,7 +129,7 @@ describe('POST /api/invitations/[token]/accept', () => {
       workspaceId: wsId,
       email: `inv-invitee-${inviteeId.slice(0, 8)}@example.com`,
       role: 'member',
-      token,
+      tokenHash: hashToken(token),
       invitedBy: ownerId,
       expiresAt: new Date(Date.now() - 1000),
     })
@@ -142,7 +143,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     const json = await res.json()
     expect(json.error).toBe('La invitación ha expirado')
 
-    await db.delete(invitations).where(eq(invitations.token, token))
+    await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
   })
 
   it('invitación ya utilizada → 410', async () => {
@@ -152,7 +153,7 @@ describe('POST /api/invitations/[token]/accept', () => {
       workspaceId: wsId,
       email: `inv-invitee-${inviteeId.slice(0, 8)}@example.com`,
       role: 'member',
-      token,
+      tokenHash: hashToken(token),
       invitedBy: ownerId,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       acceptedAt: new Date(),
@@ -167,7 +168,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     const json = await res.json()
     expect(json.error).toBe('La invitación ya fue utilizada')
 
-    await db.delete(invitations).where(eq(invitations.token, token))
+    await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
   })
 
   it('email de sesión ≠ invitation.email → 403', async () => {
@@ -183,7 +184,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     const json = await res.json()
     expect(json.error).toBe('Esta invitación es para otra cuenta')
 
-    await db.delete(invitations).where(eq(invitations.token, token))
+    await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
   })
 
   it('ya miembro → 409', async () => {
@@ -206,7 +207,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     const json = await res.json()
     expect(json.error).toBe('Ya eres miembro de este workspace')
 
-    await db.delete(invitations).where(eq(invitations.token, token))
+    await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
     await db.delete(workspaceMembers).where(
       and(eq(workspaceMembers.workspaceId, wsId), eq(workspaceMembers.userId, inviteeId))
     )
@@ -222,7 +223,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     )
     expect(res.status).toBe(409)
 
-    await db.delete(invitations).where(eq(invitations.token, token))
+    await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
   })
 
   it('OK → 200 con workspace + tx setea acceptedAt y crea member con rol heredado', async () => {
@@ -240,7 +241,7 @@ describe('POST /api/invitations/[token]/accept', () => {
     expect(json.workspace.slug).toBe(wsSlug)
 
     // acceptedAt seteado explícitamente en la tx
-    const inv = await db.select().from(invitations).where(eq(invitations.token, token)).get()
+    const inv = await db.select().from(invitations).where(eq(invitations.tokenHash, hashToken(token))).get()
     expect(inv!.acceptedAt).not.toBeNull()
 
     // member creado con rol heredado de la invitación (admin, nunca owner)
@@ -262,6 +263,6 @@ describe('POST /api/invitations/[token]/accept', () => {
     await db.delete(workspaceMembers).where(
       and(eq(workspaceMembers.workspaceId, wsId), eq(workspaceMembers.userId, inviteeId))
     )
-    await db.delete(invitations).where(eq(invitations.token, token))
+    await db.delete(invitations).where(eq(invitations.tokenHash, hashToken(token)))
   })
 })

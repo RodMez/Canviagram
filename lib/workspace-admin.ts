@@ -4,6 +4,7 @@ import { eq, and, ne, lt, isNull, desc } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { ROLE_RANK, assertWorkspaceAccess, assertCanAdmin } from '@/lib/auth/workspace-access'
 import { sendInvitation } from '@/lib/email/brevo'
+import { hashToken } from '@/lib/auth/tokens'
 import { ConflictError, ValidationError, NotFoundError, ForbiddenError, GoneError } from '@/lib/errors'
 import { updateWorkspaceSchema, inviteSchema, updateMemberRoleSchema } from '@/lib/validators/workspace'
 import { deleteBindingsByWorkspace } from '@/lib/telegram/chats'
@@ -353,9 +354,14 @@ export async function inviteMember(
     .get()
 
   if (pendingInvitation && pendingInvitation.expiresAt.getTime() > now.getTime()) {
-    // Reenviar email con token existente
-    sendInvitation(email, pendingInvitation.token, workspace.name).catch(() => {})
-    return { invitation: pendingInvitation, status: 'resent' }
+    // El token plano ya no es recuperable (solo se guarda su hash) → rotar con uno nuevo
+    const newToken = uuidv4()
+    db.update(invitations)
+      .set({ tokenHash: hashToken(newToken) })
+      .where(eq(invitations.id, pendingInvitation.id))
+      .run()
+    sendInvitation(email, newToken, workspace.name).catch(() => {})
+    return { invitation: { ...pendingInvitation, tokenHash: hashToken(newToken) }, status: 'resent' }
   }
 
   // Crear nueva invitación
@@ -370,7 +376,7 @@ export async function inviteMember(
       workspaceId,
       email,
       role: parsed!.role,
-      token,
+      tokenHash: hashToken(token),
       invitedBy: userId,
       expiresAt,
       createdAt: now,
@@ -380,7 +386,7 @@ export async function inviteMember(
   // Enviar email (no bloqueante)
   sendInvitation(email, token, workspace.name).catch(() => {})
 
-  return { invitation: inserted ?? { id, workspaceId, email, role: parsed!.role, token, invitedBy: userId, expiresAt, acceptedAt: null, createdAt: now }, status: 'created' }
+  return { invitation: inserted ?? { id, workspaceId, email, role: parsed!.role, tokenHash: hashToken(token), invitedBy: userId, expiresAt, acceptedAt: null, createdAt: now }, status: 'created' }
 }
 
 // ============================================================
@@ -497,7 +503,7 @@ export async function acceptInvitation(
   const invitation = await db
     .select()
     .from(invitations)
-    .where(eq(invitations.token, token))
+    .where(eq(invitations.tokenHash, hashToken(token)))
     .get()
 
   if (!invitation) {
@@ -573,7 +579,7 @@ export async function acceptInvitation(
 
     tx.update(invitations)
       .set({ acceptedAt: now })
-      .where(eq(invitations.token, token))
+      .where(eq(invitations.tokenHash, hashToken(token)))
       .run()
   })
 

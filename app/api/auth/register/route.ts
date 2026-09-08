@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { users, workspaces, workspaceMembers, emailVerificationTokens, sessions } from '@/lib/db/schema'
 import { registerSchema } from '@/lib/validators/auth'
 import { hashPassword } from '@/lib/auth/password'
+import { hashToken } from '@/lib/auth/tokens'
 import { buildSessionCookieValue, sign, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth/session'
 import { sendVerificationEmail } from '@/lib/email/brevo'
 import { eq, isNull, and } from 'drizzle-orm'
@@ -83,69 +84,10 @@ export async function POST(req: Request) {
     const expiresSession = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
     const expiresVerify = new Date(now.getTime() + 24 * 60 * 60 * 1000)
 
-    // Transacción atómica better-sqlite3 sync + fallback secuencial
-    try {
-      db.transaction((tx) => {
-        tx.insert(users)
-          .values({
-            id: userId,
-            email,
-            passwordHash,
-            displayName,
-            emailVerified: false,
-            createdAt: now,
-            updatedAt: now,
-            deletedAt: null,
-          })
-          .run()
-        tx.insert(workspaces)
-          .values({
-            id: workspaceId,
-            ownerId: userId,
-            name: displayName,
-            slug: finalSlug,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .run()
-        tx.insert(workspaceMembers)
-          .values({
-            id: memberId,
-            workspaceId,
-            userId,
-            role: 'owner',
-            joinedAt: now,
-            createdAt: now,
-          })
-          .run()
-        tx.insert(emailVerificationTokens)
-          .values({
-            id: emailTokenId,
-            userId,
-            token: verifyToken,
-            expiresAt: expiresVerify,
-            createdAt: now,
-          })
-          .run()
-        tx.insert(sessions)
-          .values({
-            id: sessionId,
-            userId,
-            tokenHash,
-            expiresAt: expiresSession,
-            ipAddress: null,
-            userAgent: null,
-            createdAt: now,
-          })
-          .run()
-      })
-    } catch (txError) {
-      // Fallback secuencial si transaction lanza (ej. incompatibilidad async)
-      // No await dentro de tx, aquí sí await secuencial
-      const isTxUnsupported =
-        txError instanceof Error && /transaction/i.test(txError.message)
-      if (isTxUnsupported) {
-        await db.insert(users).values({
+    // Transacción atómica (better-sqlite3 sync)
+    db.transaction((tx) => {
+      tx.insert(users)
+        .values({
           id: userId,
           email,
           passwordHash,
@@ -155,7 +97,9 @@ export async function POST(req: Request) {
           updatedAt: now,
           deletedAt: null,
         })
-        await db.insert(workspaces).values({
+        .run()
+      tx.insert(workspaces)
+        .values({
           id: workspaceId,
           ownerId: userId,
           name: displayName,
@@ -163,7 +107,9 @@ export async function POST(req: Request) {
           createdAt: now,
           updatedAt: now,
         })
-        await db.insert(workspaceMembers).values({
+        .run()
+      tx.insert(workspaceMembers)
+        .values({
           id: memberId,
           workspaceId,
           userId,
@@ -171,14 +117,18 @@ export async function POST(req: Request) {
           joinedAt: now,
           createdAt: now,
         })
-        await db.insert(emailVerificationTokens).values({
+        .run()
+      tx.insert(emailVerificationTokens)
+        .values({
           id: emailTokenId,
           userId,
-          token: verifyToken,
+          tokenHash: hashToken(verifyToken),
           expiresAt: expiresVerify,
           createdAt: now,
         })
-        await db.insert(sessions).values({
+        .run()
+      tx.insert(sessions)
+        .values({
           id: sessionId,
           userId,
           tokenHash,
@@ -187,10 +137,8 @@ export async function POST(req: Request) {
           userAgent: null,
           createdAt: now,
         })
-      } else {
-        throw txError
-      }
-    }
+        .run()
+    })
 
     const value = buildSessionCookieValue(userId, sessionToken, expiresSession)
     const res = NextResponse.json(
