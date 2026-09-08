@@ -43,7 +43,7 @@ export const users = sqliteTable(
   'users',
   {
     id: text('id').primaryKey(),
-    email: text('email').notNull().unique(),
+    email: text('email').notNull(),
     passwordHash: text('password_hash').notNull(),
     displayName: text('display_name').notNull(),
     avatarUrl: text('avatar_url'),
@@ -73,7 +73,7 @@ export const sessions = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    tokenHash: text('token_hash').notNull().unique(),
+    tokenHash: text('token_hash').notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
@@ -95,14 +95,14 @@ export const emailVerificationTokens = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    token: text('token').notNull().unique(),
+    tokenHash: text('token_hash').notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
   },
   (t) => ({
-    tokenIdx: uniqueIndex('idx_email_verify_token').on(t.token),
+    tokenIdx: uniqueIndex('idx_email_verify_token').on(t.tokenHash),
     userIdx: index('idx_email_verify_user').on(t.userId),
   })
 )
@@ -114,7 +114,7 @@ export const passwordResetTokens = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    token: text('token').notNull().unique(),
+    tokenHash: text('token_hash').notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
     usedAt: integer('used_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
@@ -122,7 +122,7 @@ export const passwordResetTokens = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (t) => ({
-    tokenIdx: uniqueIndex('idx_pwd_reset_token').on(t.token),
+    tokenIdx: uniqueIndex('idx_pwd_reset_token').on(t.tokenHash),
     userIdx: index('idx_pwd_reset_user').on(t.userId),
   })
 )
@@ -137,9 +137,9 @@ export const workspaces = sqliteTable(
     id: text('id').primaryKey(),
     ownerId: text('owner_id')
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
-    slug: text('slug').notNull().unique(),
+    slug: text('slug').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -192,7 +192,7 @@ export const invitations = sqliteTable(
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
     role: text('role', { enum: INVITATION_ROLES }).notNull().default('member'),
-    token: text('token').notNull().unique(),
+    tokenHash: text('token_hash').notNull(),
     invitedBy: text('invited_by')
       .notNull()
       .references(() => users.id),
@@ -203,7 +203,7 @@ export const invitations = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (t) => ({
-    tokenIdx: uniqueIndex('idx_invitations_token').on(t.token),
+    tokenIdx: uniqueIndex('idx_invitations_token').on(t.tokenHash),
     workspaceEmailIdx: index('idx_invitations_workspace_email').on(
       t.workspaceId,
       t.email
