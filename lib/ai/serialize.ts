@@ -18,6 +18,8 @@ export function serializeNode(node: any) {
     status: node.status,
     positionX: node.positionX,
     positionY: node.positionY,
+    dueDate: node.dueDate ? new Date(node.dueDate).toISOString() : null,
+    reminderOffsetMin: node.reminderOffsetMin ?? null,
   }
 }
 

@@ -1,0 +1,16 @@
+{
+  "name": "Canviagram",
+  "short_name": "Canviagram",
+  "description": "Mapas mentales y gestión de proyectos en canvas.",
+  "start_url": "/workspaces",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

@@ -21,7 +21,7 @@ describe('AI tools', () => {
 
   it('serializeNode/Edge extraen solo campos relevantes', () => {
     const node = serializeNode({ id: 'n1', type: 'task', title: 'T', content: 'c', status: 'todo', positionX: 10, positionY: 20, workspaceId: 'ws-1', createdAt: new Date() })
-    expect(node).toEqual({ id: 'n1', type: 'task', title: 'T', content: 'c', status: 'todo', positionX: 10, positionY: 20 })
+    expect(node).toEqual({ id: 'n1', type: 'task', title: 'T', content: 'c', status: 'todo', positionX: 10, positionY: 20, dueDate: null, reminderOffsetMin: null })
     expect(node).not.toHaveProperty('workspaceId')
     const edge = serializeEdge({ id: 'e1', sourceId: 'n1', targetId: 'n2', type: 'related_to', label: 'test', workspaceId: 'ws-1', createdAt: new Date() })
     expect(edge).toEqual({ id: 'e1', sourceId: 'n1', targetId: 'n2', type: 'related_to', label: 'test' })

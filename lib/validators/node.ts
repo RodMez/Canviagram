@@ -25,6 +25,19 @@ export const createNodeSchema = z
       .nullable(),
     positionX: z.number().finite('La posición X debe ser un número válido').optional(),
     positionY: z.number().finite('La posición Y debe ser un número válido').optional(),
+    // Fase 3: recordatorio. dueDate = epoch ms; reminderOffsetMin = minutos ANTES de dueDate.
+    dueDate: z
+      .number()
+      .int('La fecha límite debe ser un timestamp válido')
+      .optional()
+      .nullable(),
+    reminderOffsetMin: z
+      .number()
+      .int('El recordatorio debe ser en minutos enteros')
+      .min(0, 'El recordatorio no puede ser negativo')
+      .max(525600, 'El recordatorio no puede exceder 1 año')
+      .optional()
+      .nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.status && data.type !== 'task') {
@@ -63,6 +76,18 @@ export const updateNodeSchema = z
       .nullable(),
     positionX: z.number().finite('La posición X debe ser un número válido').optional(),
     positionY: z.number().finite('La posición Y debe ser un número válido').optional(),
+    dueDate: z
+      .number()
+      .int('La fecha límite debe ser un timestamp válido')
+      .optional()
+      .nullable(),
+    reminderOffsetMin: z
+      .number()
+      .int('El recordatorio debe ser en minutos enteros')
+      .min(0, 'El recordatorio no puede ser negativo')
+      .max(525600, 'El recordatorio no puede exceder 1 año')
+      .optional()
+      .nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.status && data.type && data.type !== 'task') {

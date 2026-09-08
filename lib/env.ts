@@ -16,6 +16,11 @@ const envSchema = z
     EMAIL_FROM: z.string().email().optional(),
     BREVO_SENDER_EMAIL: z.string().email().optional(),
     NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+    // Fase 3: notificaciones push + sweeper de recordatorios
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_SUBJECT: z.string().optional(),
+    REMINDER_SWEEP_SECRET: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production' && data.DATABASE_URL) {
@@ -94,6 +99,10 @@ function parseEnv() {
     EMAIL_FROM: process.env.EMAIL_FROM ?? process.env.BREVO_SENDER_EMAIL,
     BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
+    REMINDER_SWEEP_SECRET: process.env.REMINDER_SWEEP_SECRET,
   }
 
   const result = envSchema.safeParse(raw)

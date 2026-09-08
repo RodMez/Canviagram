@@ -15,6 +15,7 @@ import {
   Shuffle,
 } from 'lucide-react'
 import { useCanvasStore } from '@/store/canvas-store'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
 
 // ============================================================
 // Lógica pura extraída para testear sin DOM (Diseño 13)
@@ -48,9 +49,11 @@ type ToolbarProps = {
   onOpenTemplates?: () => void
   /** Reordena el grafo a una grilla limpia. */
   onReorder?: () => void
+  /** Id del workspace actual (para la campana de notificaciones). */
+  workspaceId?: string
 }
 
-export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onOpenTemplates, onReorder }: ToolbarProps) {
+export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onOpenTemplates, onReorder, workspaceId }: ToolbarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const isPanelCollapsed = useCanvasStore((s) => s.isPanelCollapsed)
@@ -173,6 +176,9 @@ export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onOp
           <PanelRightClose className="h-4 w-4" />
         )}
       </button>
+
+      {/* Campana de notificaciones (Fase 3) */}
+      {workspaceId ? <NotificationBell workspaceId={workspaceId} /> : null}
 
       {/* Menú de usuario: avatar con identidad real + Configuración + Cerrar sesión */}
       <div className="relative">

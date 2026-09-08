@@ -39,6 +39,42 @@ function clampOffset(offset: number | undefined): number {
 }
 
 // ============================================================
+// Recordatorios (Fase 3)
+// ============================================================
+
+/** Offset por defecto (min) cuando se fija dueDate sin recordatorio explícito: 15 min. */
+export const DEFAULT_REMINDER_OFFSET_MIN = 15
+
+/**
+ * Resuelve dueDate/reminderOffsetMin para insert/update.
+ * - Si se fija dueDate y no hay offset, usa el default (15 min antes).
+ * - Si cambia dueDate u offset, reinicia notifiedAt para re-armar el sweep.
+ */
+export function resolveReminderFields(
+  parsed: { dueDate?: number | null; reminderOffsetMin?: number | null },
+  existing: { dueDate: Date | null; reminderOffsetMin: number | null; notifiedAt: Date | null }
+): { dueDate: Date | null; reminderOffsetMin: number | null; notifiedAt: Date | null } {
+  const dueMs = parsed.dueDate !== undefined ? parsed.dueDate : existing.dueDate?.getTime() ?? null
+  let offset = parsed.reminderOffsetMin !== undefined ? parsed.reminderOffsetMin : existing.reminderOffsetMin
+
+  if (dueMs != null && offset == null) {
+    offset = DEFAULT_REMINDER_OFFSET_MIN
+  }
+
+  const effectiveDueChanged =
+    parsed.dueDate !== undefined && (parsed.dueDate ?? null) !== (existing.dueDate?.getTime() ?? null)
+  const effectiveOffsetChanged =
+    parsed.reminderOffsetMin !== undefined &&
+    (parsed.reminderOffsetMin ?? null) !== existing.reminderOffsetMin
+
+  return {
+    dueDate: dueMs != null ? new Date(dueMs) : null,
+    reminderOffsetMin: offset,
+    notifiedAt: effectiveDueChanged || effectiveOffsetChanged ? null : existing.notifiedAt,
+  }
+}
+
+// ============================================================
 // NODES
 // ============================================================
 
@@ -68,6 +104,12 @@ export async function createNode(workspaceId: string, userId: string, input: unk
   const [freeIndex] = findFreeSlots(occupied, 1)
   const slot = positionForIndex(freeIndex)
 
+  const reminder = resolveReminderFields(parsed!, {
+    dueDate: null,
+    reminderOffsetMin: null,
+    notifiedAt: null,
+  })
+
   const [inserted] = await db
     .insert(nodes)
     .values({
@@ -78,6 +120,9 @@ export async function createNode(workspaceId: string, userId: string, input: unk
       title: parsed!.title,
       content: parsed!.content ?? null,
       status: parsed!.status ?? null,
+      dueDate: reminder.dueDate,
+      reminderOffsetMin: reminder.reminderOffsetMin,
+      notifiedAt: null,
       positionX: slot.x,
       positionY: slot.y,
       createdAt: now,
@@ -125,6 +170,12 @@ export async function updateNode(
 
   const now = new Date()
 
+  const reminder = resolveReminderFields(parsed!, {
+    dueDate: existing.dueDate,
+    reminderOffsetMin: existing.reminderOffsetMin,
+    notifiedAt: existing.notifiedAt,
+  })
+
   const updateData: Record<string, unknown> = {
     updatedAt: now,
   }
@@ -134,6 +185,13 @@ export async function updateNode(
   if (parsed!.status !== undefined) updateData.status = parsed!.status
   if (parsed!.positionX !== undefined) updateData.positionX = parsed!.positionX
   if (parsed!.positionY !== undefined) updateData.positionY = parsed!.positionY
+  if ((reminder.dueDate?.getTime() ?? null) !== (existing.dueDate?.getTime() ?? null)) {
+    updateData.dueDate = reminder.dueDate
+  }
+  if (reminder.reminderOffsetMin !== existing.reminderOffsetMin) {
+    updateData.reminderOffsetMin = reminder.reminderOffsetMin
+  }
+  if (reminder.notifiedAt !== existing.notifiedAt) updateData.notifiedAt = reminder.notifiedAt
 
   const [updated] = await db
     .update(nodes)

@@ -19,6 +19,8 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
   const [type, setType] = useState<NodeType>(node?.type ?? 'task')
   const [content, setContent] = useState(node?.content ?? '')
   const [status, setStatus] = useState<NodeStatus>(node?.status ?? 'todo')
+  const [dueDate, setDueDate] = useState<number | null>(node?.dueDate ? node.dueDate.getTime() : null)
+  const [reminderOffsetMin, setReminderOffsetMin] = useState<number | null>(node?.reminderOffsetMin ?? null)
 
   const save = useDebouncedSave({
     fn: isDemo
@@ -41,6 +43,8 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
     setType(node?.type ?? 'task')
     setContent(node?.content ?? '')
     setStatus(node?.status ?? 'todo')
+    setDueDate(node?.dueDate ? node.dueDate.getTime() : null)
+    setReminderOffsetMin(node?.reminderOffsetMin ?? null)
   }, [node?.id])
   /* eslint-enable react-hooks/exhaustive-deps */
 
@@ -65,6 +69,22 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
   }
 
   const fieldCls = 'mt-1 w-full rounded border bg-background px-3 py-2 text-sm'
+
+  function toLocalInputValue(ts: number | null): string {
+    if (ts == null) return ''
+    const d = new Date(ts)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const REMINDER_OPTIONS: Array<{ value: number | null; label: string }> = [
+    { value: null, label: 'Con la fecha' },
+    { value: 0, label: 'Al momento' },
+    { value: 15, label: '15 min antes' },
+    { value: 60, label: '1 h antes' },
+    { value: 1440, label: '1 día antes' },
+    { value: 10080, label: '1 semana antes' },
+  ]
 
   return (
     <div className="flex h-full flex-col">
@@ -127,6 +147,43 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
             </select>
           </label>
         )}
+
+        <label className="block">
+          <span className="text-xs font-medium text-muted-foreground">Fecha límite</span>
+          <input
+            type="datetime-local"
+            value={toLocalInputValue(dueDate)}
+            onChange={(e) => {
+              const v = e.target.value
+              const next = v ? new Date(v).getTime() : null
+              setDueDate(next)
+              save.trigger({ dueDate: next })
+            }}
+            onBlur={() => save.flush()}
+            className={fieldCls}
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium text-muted-foreground">Recordatorio</span>
+          <select
+            value={reminderOffsetMin ?? ''}
+            onChange={(e) => {
+              const raw = e.target.value
+              const next = raw === '' ? null : Number(raw)
+              setReminderOffsetMin(next)
+              save.trigger({ reminderOffsetMin: next })
+            }}
+            onBlur={() => save.flush()}
+            className={fieldCls}
+          >
+            {REMINDER_OPTIONS.map((o) => (
+              <option key={o.value ?? 'none'} value={o.value ?? ''}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="flex items-center">
           {save.status === 'saved' && <span className="text-xs text-emerald-600">Guardado</span>}

@@ -120,6 +120,8 @@ describe('lib/demo/fixtures', () => {
         status: node.status,
         positionX: node.positionX,
         positionY: node.positionY,
+        dueDate: null,
+        reminderOffsetMin: null,
       })
       expect(node).not.toHaveProperty('workspaceId')
       expect(node).not.toHaveProperty('createdBy')

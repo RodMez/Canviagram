@@ -105,6 +105,7 @@ export default function WorkspaceClient({
         onReorder={handleReorder}
         userName={userName}
         userEmail={userEmail}
+        workspaceId={workspaceId}
       />
       <div className="flex flex-1 overflow-hidden">
         <Canvas

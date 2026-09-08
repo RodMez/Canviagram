@@ -51,8 +51,8 @@ export function createNode(graph: DemoGraph, input: unknown): Node {
     title: parsed!.title,
     content: parsed!.content ?? null,
     status: parsed!.status ?? null,
-    dueDate: null,
-    reminderOffsetMin: null,
+    dueDate: parsed!.dueDate ? new Date(parsed!.dueDate) : null,
+    reminderOffsetMin: parsed!.reminderOffsetMin ?? null,
     notifiedAt: null,
     positionX: parsed!.positionX ?? 0,
     positionY: parsed!.positionY ?? 0,
@@ -86,6 +86,16 @@ export function updateNode(graph: DemoGraph, nodeId: string, input: unknown): No
     title: parsed!.title ?? existing.title,
     content: parsed!.content !== undefined ? parsed!.content : existing.content,
     status: effectiveStatus,
+    dueDate:
+      parsed!.dueDate !== undefined
+        ? parsed!.dueDate
+          ? new Date(parsed!.dueDate)
+          : null
+        : existing.dueDate,
+    reminderOffsetMin:
+      parsed!.reminderOffsetMin !== undefined
+        ? parsed!.reminderOffsetMin
+        : existing.reminderOffsetMin,
     positionX: parsed!.positionX ?? existing.positionX,
     positionY: parsed!.positionY ?? existing.positionY,
     updatedAt: DEMO_CREATED_AT,
