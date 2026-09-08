@@ -120,14 +120,16 @@ export function Toolbar({ workspaceName, userName, userEmail, onCreateNode }: To
 
       <div className="flex-1" />
 
-      {/* Botón + → abre CreateNodePopup en centro del viewport */}
-      <button
-        onClick={onCreateNode}
-        aria-label="Crear nodo"
-        className="flex h-8 w-8 items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90"
-      >
-        <Plus className="h-4 w-4" />
-      </button>
+      {/* Botón + → abre CreateNodePopup en centro del viewport (solo si el padre lo provee) */}
+      {onCreateNode ? (
+        <button
+          onClick={onCreateNode}
+          aria-label="Crear nodo"
+          className="flex h-8 w-8 items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      ) : null}
 
       {/* Botón colapsar panel */}
       <button
