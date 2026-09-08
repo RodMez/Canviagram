@@ -7,6 +7,7 @@ import { filterOrphanEdges } from '@/lib/canvas/rf'
 import Canvas from '@/components/canvas/Canvas'
 import { RightPanel } from '@/components/canvas/RightPanel'
 import { Toolbar } from '@/components/canvas/Toolbar'
+import { TemplatesModal } from '@/components/canvas/TemplatesModal'
 import type { SseStatus } from '@/components/canvas/AiChatPanel'
 import type { Node, Edge } from '@/lib/db/schema'
 
@@ -36,6 +37,7 @@ export default function WorkspaceClient({
   const [sseEnabled, setSseEnabled] = useState(false)
   const [sseStatus, setSseStatus] = useState<SseStatus>('connecting')
   const [createNodeRequest, setCreateNodeRequest] = useState<CreateNodeRequest | null>(null)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
 
   // Botón + del Toolbar → abre CreateNodePopup en el centro del viewport.
   const handleCreateNode = useCallback(() => {
@@ -67,6 +69,24 @@ export default function WorkspaceClient({
     setSseEnabled(true)
   }, [workspaceId, loadGraph])
 
+  // Reordenar (Fase 0): relayout del grafo a grilla limpia y refresco local.
+  const handleReorder = useCallback(async () => {
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/layout`, { method: 'POST' })
+    } catch (err) {
+      console.error('[workspace-client] reorder failed', err)
+    }
+    await loadInitialGraph()
+  }, [workspaceId, loadInitialGraph])
+
+  // Tramo de template aplicado: la respuesta la refleja SSE; recargamos el
+  // grafo local para que el nuevo subgrafo entre en el store sin esperar
+  // reconexiones (y el fitView one-shot encuadra los nodos nuevos).
+  const handleTemplateApplied = useCallback(() => {
+    setTemplatesOpen(false)
+    void loadInitialGraph()
+  }, [loadInitialGraph])
+
   useEffect(() => {
     loadInitialGraph()
   }, [loadInitialGraph])
@@ -81,6 +101,8 @@ export default function WorkspaceClient({
       <Toolbar
         workspaceName={workspaceName}
         onCreateNode={handleCreateNode}
+        onOpenTemplates={() => setTemplatesOpen(true)}
+        onReorder={handleReorder}
         userName={userName}
         userEmail={userEmail}
       />
@@ -93,6 +115,12 @@ export default function WorkspaceClient({
         />
         <RightPanel workspaceId={workspaceId} userId={userId} sseStatus={sseStatus} />
       </div>
+      <TemplatesModal
+        workspaceId={workspaceId}
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        onApplied={handleTemplateApplied}
+      />
     </div>
   )
 }

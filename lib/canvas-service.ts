@@ -1,13 +1,15 @@
 ﻿import { db } from '@/lib/db'
 import { nodes, edges } from '@/lib/db/schema'
-import { eq, and, isNull, or, asc, sql } from 'drizzle-orm'
+import { eq, and, isNull, or, asc } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { createNodeSchema, updateNodeSchema } from '@/lib/validators/node'
 import { createEdgeSchema, updateEdgeSchema } from '@/lib/validators/edge'
 import { publish } from '@/lib/sse/pubsub'
 import { assertWorkspaceAccess, assertCanWrite } from '@/lib/auth/workspace-access'
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '@/lib/errors'
-import { positionForIndex } from '@/lib/canvas/layout'
+import { positionForIndex, occupiedIndex, findFreeSlots } from '@/lib/canvas/layout'
+import { getTemplateById } from '@/lib/templates/catalog'
+import type { TemplateDefinition } from '@/lib/templates/catalog'
 
 // Re-export errors for compatibility with routes importing from canvas-service
 export { ValidationError, NotFoundError, ForbiddenError, ConflictError }
@@ -54,13 +56,17 @@ export async function createNode(workspaceId: string, userId: string, input: unk
   const now = new Date()
 
   // Auto-layout (diseño 7): el servidor asigna la posición en grilla según el
-  // conteo de nodos vivos actual. Entradas positionX/Y se IGNORAN deliberadamente.
-  const countRow = await db
-    .select({ count: sql<number>`count(*)` })
+  // PRIMER SLOT LIBRE (basado en posiciones reales, no en el conteo de nodos).
+  // Conteo falla tras borrados/drag: reutiliza slots ocupados y los nodos se
+  // solapan. Entradas positionX/Y se IGNORAN deliberadamente.
+  const existingPositions = await db
+    .select({ positionX: nodes.positionX, positionY: nodes.positionY })
     .from(nodes)
     .where(and(eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
-    .get()
-  const slot = positionForIndex(Number(countRow?.count ?? 0))
+    .all()
+  const occupied = new Set(existingPositions.map((n) => occupiedIndex(n.positionX, n.positionY)))
+  const [freeIndex] = findFreeSlots(occupied, 1)
+  const slot = positionForIndex(freeIndex)
 
   const [inserted] = await db
     .insert(nodes)
@@ -412,4 +418,168 @@ export async function getWorkspaceGraph(workspaceId: string, userId: string) {
   const filteredEdges = allEdges.filter((e) => aliveIds.has(e.sourceId) && aliveIds.has(e.targetId))
 
   return { nodes: allNodes, edges: filteredEdges }
+}
+
+// ============================================================
+// LAYOUT / TEMPLATES
+// ============================================================
+
+/**
+ * Reordena todo el grafo activo del workspace a una grilla limpia.
+ * Capas por profundidad (longest-path sobre parent_of/depends_on en dirección
+ * source→target), así proyectos y dependencias quedan adyacentes; los nodos
+ * sin conexiones van tras los conectados (ordenados por createdAt).
+ * Publica node:updated por nodo para sincronizar todos los clientes SSE.
+ */
+export async function relayoutWorkspace(workspaceId: string, userId: string) {
+  await assertCanWrite(workspaceId, userId)
+
+  const allNodes = await db
+    .select()
+    .from(nodes)
+    .where(and(eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
+    .all()
+  const allEdges = await db.select().from(edges).where(eq(edges.workspaceId, workspaceId)).all()
+
+  if (allNodes.length === 0) {
+    return { repositioned: 0 }
+  }
+
+  // Longest-path layering: rank[target] = max(rank[target], rank[source] + 1)
+  const rank = new Map<string, number>()
+  for (const n of allNodes) rank.set(n.id, 0)
+  for (let i = 0; i < allNodes.length; i++) {
+    let changed = false
+    for (const e of allEdges) {
+      const sourceRank = rank.get(e.sourceId)
+      const targetRank = rank.get(e.targetId)
+      if (sourceRank !== undefined && targetRank !== undefined && targetRank < sourceRank + 1) {
+        rank.set(e.targetId, sourceRank + 1)
+        changed = true
+      }
+    }
+    if (!changed) break
+  }
+
+  const sorted = [...allNodes].sort((a, b) => {
+    const rankDiff = (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0)
+    if (rankDiff !== 0) return rankDiff
+    return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
+  })
+
+  const now = new Date()
+  db.transaction((tx) => {
+    sorted.forEach((node, i) => {
+      const pos = positionForIndex(i)
+      tx.update(nodes)
+        .set({ positionX: pos.x, positionY: pos.y, updatedAt: now } as never)
+        .where(and(eq(nodes.id, node.id), eq(nodes.workspaceId, workspaceId)))
+        .run()
+    })
+  })
+
+  const updated = await db
+    .select()
+    .from(nodes)
+    .where(and(eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
+    .all()
+  for (const n of updated) publish(workspaceId, 'node:updated', n)
+
+  return { repositioned: updated.length }
+}
+
+type InsertedTemplateNode = {
+  id: string
+  workspaceId: string
+  createdBy: string
+  type: TemplateDefinition['nodes'][number]['type']
+  title: string
+  content: string | null
+  status: typeof nodes.$inferSelect.status
+  positionX: number
+  positionY: number
+  createdAt: Date
+  updatedAt: Date
+  deletedAt: null
+}
+
+/**
+ * Materializa un template del catálogo en ZONA LIBRE del canvas: reserva un
+ * bloque contiguo de slots desocupados y crea nodos + edges en una transacción
+ * atómica, publicando node:created/edge:created por elemento.
+ */
+export async function applyTemplate(workspaceId: string, userId: string, templateId: string) {
+  await assertCanWrite(workspaceId, userId)
+
+  const template = getTemplateById(templateId)
+  if (!template) {
+    throw new NotFoundError('Template no encontrado')
+  }
+
+  const existingPositions = await db
+    .select({ positionX: nodes.positionX, positionY: nodes.positionY })
+    .from(nodes)
+    .where(and(eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
+    .all()
+  const occupied = new Set(existingPositions.map((n) => occupiedIndex(n.positionX, n.positionY)))
+  const freeSlots = findFreeSlots(occupied, template.nodes.length)
+
+  const now = new Date()
+  const idsByTemplateIndex = new Map<number, string>()
+  const createdNodes: InsertedTemplateNode[] = []
+  const createdEdges: Array<typeof edges.$inferSelect> = []
+
+  db.transaction((tx) => {
+    template.nodes.forEach((def, i) => {
+      const id = uuidv4()
+      idsByTemplateIndex.set(i, id)
+      const pos = positionForIndex(freeSlots[i])
+      const node: InsertedTemplateNode = {
+        id,
+        workspaceId,
+        createdBy: userId,
+        type: def.type,
+        title: def.title,
+        content: def.content ?? null,
+        status: def.status ?? null,
+        positionX: pos.x,
+        positionY: pos.y,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      }
+      tx.insert(nodes)
+        .values(node)
+        .run()
+      createdNodes.push(node)
+    })
+
+    template.edges.forEach((def) => {
+      const sourceId = idsByTemplateIndex.get(def.source)
+      const targetId = idsByTemplateIndex.get(def.target)
+      if (!sourceId || !targetId) {
+        throw new ConflictError('Template inválido: edge referencia un nodo inexistente')
+      }
+      const id = uuidv4()
+      const edge: typeof edges.$inferSelect = {
+        id,
+        workspaceId,
+        createdBy: userId,
+        sourceId,
+        targetId,
+        type: def.type,
+        label: def.label ?? null,
+        createdAt: now,
+      }
+      tx.insert(edges)
+        .values(edge)
+        .run()
+      createdEdges.push(edge)
+    })
+  })
+
+  for (const n of createdNodes) publish(workspaceId, 'node:created', n)
+  for (const e of createdEdges) publish(workspaceId, 'edge:created', e)
+
+  return { template: template.id, nodes: createdNodes, edges: createdEdges }
 }

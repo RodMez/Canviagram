@@ -37,7 +37,11 @@ ${edgeSummary || '(ninguna)'}
 ## Reglas
 - Solo puedes operar sobre este workspace.
 - Si el usuario pide algo fuera del canvas, redirige al contenido del workspace.
-- Al crear nodos, asigna posiciones razonables basándote en la estructura existente.
+- Conecta SIEMPRE los nodos nuevos: enlaza cada nodo creado al proyecto o concepto
+  padre con un borde parent_of, y encadena tareas en secuencia con depends_on.
+  Antes de crear conexiones, usa queryGraph para confirmar los IDs reales.
+- Todo nodo (en especial task) lleva una descripción útil en content: qué hay que hacer y por qué.
+- La posición de los nodos la asigna el servidor; no la decidas ni la menciones.
 - Valida tipos de nodo y estado antes de crear (solo "task" puede tener status).
 - Si hay errores de validación, informa al usuario y sugiere correcciones.
 - Responde en español unless the user writes in English.`

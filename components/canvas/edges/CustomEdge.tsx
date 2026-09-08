@@ -6,10 +6,13 @@ import type { CanvasRFEdge } from '@/lib/canvas/rf'
 import type { EdgeType } from '@/lib/db/schema'
 import { EdgeTypePopup } from './EdgeTypePopup'
 
-const EDGE_STYLE: Record<EdgeType, { strokeDasharray?: string; strokeWidth: number }> = {
-  depends_on: { strokeWidth: 2 },
-  parent_of: { strokeDasharray: '6 4', strokeWidth: 2 },
-  related_to: { strokeWidth: 1 },
+// Colores y estilo por tipo de enlace (Fase 0): depends_on resaltado (crítico),
+// parent_of punteado en azul, related_to fino/gris. El label central ya muestra
+// el tipo por defecto para que los enlaces sean legibles a simple vista.
+const EDGE_STYLE: Record<EdgeType, { stroke: string; strokeDasharray?: string; strokeWidth: number }> = {
+  depends_on: { stroke: '#ef4444', strokeWidth: 2.5 },
+  parent_of: { stroke: '#3b82f6', strokeDasharray: '7 4', strokeWidth: 2 },
+  related_to: { stroke: 'var(--muted-foreground)', strokeWidth: 1 },
 }
 
 export function CustomEdge(props: EdgeProps<CanvasRFEdge>) {
@@ -37,7 +40,7 @@ export function CustomEdge(props: EdgeProps<CanvasRFEdge>) {
         path={edgePath}
         markerEnd={markerEnd}
         style={{
-          stroke: 'var(--muted-foreground)',
+          stroke: style.stroke,
           strokeWidth: style.strokeWidth,
           strokeDasharray: style.strokeDasharray,
         }}
