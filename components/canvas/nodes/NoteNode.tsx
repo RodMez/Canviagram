@@ -6,7 +6,7 @@ export function NoteNode({ data }: NodeProps<CanvasRFNode>) {
   const { domain } = data
   return (
     <NodeShell domain={domain}>
-      {domain.content ? <span className="line-clamp-1">{domain.content}</span> : null}
+      {domain.content ? <span className="line-clamp-2">{domain.content}</span> : null}
     </NodeShell>
   )
 }

@@ -63,7 +63,7 @@ export function TaskNode({ data }: NodeProps<CanvasRFNode>) {
 
   return (
     <NodeShell domain={domain} badge={badge}>
-      {domain.content ? <span className="line-clamp-1">{domain.content}</span> : null}
+      {domain.content ? <span className="line-clamp-2">{domain.content}</span> : null}
     </NodeShell>
   )
 }

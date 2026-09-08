@@ -34,7 +34,7 @@ export function NodeShell({ domain, children, badge }: NodeShellProps) {
       </div>
 
       {children && (
-        <div className="border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground truncate">
+        <div className="border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground line-clamp-2">
           {children}
         </div>
       )}

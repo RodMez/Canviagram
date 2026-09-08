@@ -104,7 +104,7 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
         </label>
 
         <label className="block">
-          <span className="text-xs font-medium text-muted-foreground">Contenido</span>
+          <span className="text-xs font-medium text-muted-foreground">Descripción</span>
           <textarea
             value={content}
             onChange={(e) => { setContent(e.target.value); save.trigger({ content: e.target.value }) }}

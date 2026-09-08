@@ -14,11 +14,12 @@ type CreateNodePopupProps = {
   onClose: () => void
 }
 
-// Popup crear nodo (Diseño 12.4): título + tipo → POST /nodes.
+// Popup crear nodo (Diseño 12.4): título + descripción + tipo → POST /nodes.
 // La respuesta la refleja SSE (node:created); el popup NO duplica el insert.
 // Modo demo (F4.1): publish local vía applyLocalEvent, cero fetch.
 export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose }: CreateNodePopupProps) {
   const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
   const [type, setType] = useState<NodeType>('task')
   const [busy, setBusy] = useState(false)
   const creatingRef = useRef(false)
@@ -49,8 +50,11 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose }: Cr
           createdBy: 'demo',
           type,
           title: trimmed,
-          content: null,
+          content: description.trim() || null,
           status: type === 'task' ? 'todo' : null,
+          dueDate: null,
+          reminderOffsetMin: null,
+          notifiedAt: null,
           positionX: flowPos.x,
           positionY: flowPos.y,
           createdAt: new Date(),
@@ -67,6 +71,7 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose }: Cr
         body: JSON.stringify({
           title: trimmed,
           type,
+          content: description.trim() || null,
           positionX: flowPos.x,
           positionY: flowPos.y,
           ...(type === 'task' ? { status: 'todo' } : {}),
@@ -99,6 +104,14 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose }: Cr
         onKeyDown={(e) => e.key === 'Enter' && create()}
         placeholder="Título del nodo"
         className="mb-2 w-full rounded border bg-background px-2 py-1 text-sm"
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && create()}
+        placeholder="Descripción (opcional)"
+        rows={3}
+        className="mb-2 w-full resize-none rounded border bg-background px-2 py-1 text-sm"
       />
       <select
         value={type}
