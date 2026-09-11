@@ -12,7 +12,9 @@
         "start": "next start",
         "lint": "next lint",
         "test": "vitest run",
-        "telegram:set-webhook": "node scripts/set-telegram-webhook.mjs"
+        "telegram:set-webhook": "node scripts/set-telegram-webhook.mjs",
+        "telegram:set-commands": "node scripts/set-telegram-commands.mjs --set",
+        "telegram:get-commands": "node scripts/set-telegram-commands.mjs --get"
     },
     "dependencies": {
         "@ai-sdk/anthropic": "^4.0.48",
