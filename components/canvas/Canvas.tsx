@@ -5,6 +5,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   MarkerType,
@@ -36,6 +37,15 @@ type CreatePopupState = {
   screenPos: { x: number; y: number }
   flowPos: { x: number; y: number }
 }
+
+// Color por tipo para el MiniMap (Fase V): mismo lenguaje que NODE_META.
+const MINIMAP_COLORS = {
+  task: '#F59E0B',
+  note: '#10B981',
+  idea: '#8B5CF6',
+  person: '#F43F5E',
+  resource: '#14B8B8',
+} as const
 
 export default function Canvas({
   workspaceId,
@@ -217,9 +227,14 @@ function CanvasInner({
         deleteKeyCode={['Backspace', 'Delete']}
         proOptions={{ hideAttribution: true }}
       >
-        <Background />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#FECDD3" bgColor="#FFF7F8" />
         <Controls />
-        <MiniMap />
+        <MiniMap
+          pannable
+          zoomable
+          maskColor="rgba(255, 241, 242, 0.7)"
+          nodeColor={(n) => MINIMAP_COLORS[n.type as keyof typeof MINIMAP_COLORS] ?? '#E11D48'}
+        />
       </ReactFlow>
       <CreateNodePopup
         screenPos={createPopup?.screenPos ?? null}

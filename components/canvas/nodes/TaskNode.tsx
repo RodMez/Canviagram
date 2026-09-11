@@ -12,8 +12,8 @@ import { isDemoWorkspace } from '@/lib/demo/fixtures'
 
 const STATUS_STYLES: Record<NodeStatus, string> = {
   todo: 'bg-muted text-muted-foreground',
-  in_progress: 'bg-blue-500/15 text-blue-600',
-  done: 'bg-emerald-500/15 text-emerald-600',
+  in_progress: 'bg-accent/15 text-accent',
+  done: 'bg-emerald-500/15 text-emerald-700',
 }
 
 export function TaskNode({ data }: NodeProps<CanvasRFNode>) {

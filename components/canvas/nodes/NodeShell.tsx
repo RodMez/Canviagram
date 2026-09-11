@@ -38,20 +38,25 @@ export function DueDateChip({ domain }: { domain: DBNode }) {
 export function NodeShell({ domain, children, badge }: NodeShellProps) {
   const meta = NODE_META[domain.type]
   const Icon = meta.icon
+  const isDone = domain.type === 'task' && domain.status === 'done'
+  const isOverdue =
+    !isDone && !!domain.dueDate && new Date(domain.dueDate).getTime() < Date.now()
 
   return (
     <div
       className={cn(
-        'rounded-xl border bg-card shadow-sm min-w-[160px] max-w-[260px] text-sm',
+        'rounded-xl border-2 bg-card shadow-md min-w-[160px] max-w-[260px] text-sm transition-all',
         meta.accent,
+        isDone && 'opacity-70',
+        isOverdue && 'ring-2 ring-destructive ring-offset-1',
       )}
     >
       <Handle type="target" position={Position.Left} className="!w-2 !h-2" />
       <Handle type="source" position={Position.Right} className="!w-2 !h-2" />
 
       <div className="flex items-center gap-2 px-3 py-2">
-        <Icon className="h-4 w-4 shrink-0 opacity-80" />
-        <span className="font-medium truncate">{domain.title}</span>
+        <Icon className="h-4 w-4 shrink-0 text-primary" />
+        <span className={cn('font-semibold truncate', isDone && 'line-through text-muted-foreground')}>{domain.title}</span>
         {badge}
       </div>
 

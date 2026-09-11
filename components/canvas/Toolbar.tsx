@@ -90,10 +90,12 @@ export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onRe
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
-      {/* Logo → /workspaces */}
-      <Link href="/workspaces" className="flex items-center gap-2 text-sm font-semibold">
-        <FolderKanban className="h-5 w-5 text-primary" />
-        <span>Canviagram</span>
+      {/* Logo → /today (F5.4: Hoy es el landing post-login) */}
+      <Link href="/today" className="flex cursor-pointer items-center gap-2">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-sm">
+          <FolderKanban className="h-4 w-4 text-primary-foreground" />
+        </span>
+        <span className="font-display text-xl font-semibold tracking-wide">Canviagram</span>
       </Link>
 
       {/* Workspace name ▾ dropdown */}
