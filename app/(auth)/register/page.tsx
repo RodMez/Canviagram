@@ -13,16 +13,15 @@ export default function RegisterPage() {
   const [rootError, setRootError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showBanner, setShowBanner] = useState(false)
-  const [redirectSlug, setRedirectSlug] = useState<string | null>(null)
 
   useEffect(() => {
     if (!showBanner) return
+    // F5.4: el landing post-registro es Hoy (el estado vacío guía a workspaces).
     const t = setTimeout(() => {
-      if (redirectSlug) router.push(`/w/${redirectSlug}`)
-      else router.push("/workspaces")
+      router.push("/today")
     }, 800)
     return () => clearTimeout(t)
-  }, [showBanner, redirectSlug, router])
+  }, [showBanner, router])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -43,7 +42,6 @@ export default function RegisterPage() {
       const data = await res.json().catch(() => ({}))
       if (res.status === 201) {
         setShowBanner(true)
-        setRedirectSlug(data?.workspace?.slug ?? null)
         return
       }
       if (res.status === 409) {

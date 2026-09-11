@@ -49,24 +49,8 @@ function LoginForm() {
           router.push(nextParam)
           return
         }
-        // Best-effort: intentar fetch workspaces para futuro F3.1, no bloquear
-        try {
-          const wRes = await fetch("/api/workspaces")
-          if (wRes.ok) {
-            const wData = await wRes.json().catch(() => null)
-            const slug =
-              (wData as { workspaces?: { slug: string }[] } | null)?.workspaces?.[0]?.slug ??
-              (wData as { slug?: string } | null)?.slug ??
-              (Array.isArray(wData) ? (wData as { slug: string }[])[0]?.slug : undefined)
-            if (slug) {
-              router.push(`/w/${slug}`)
-              return
-            }
-          }
-        } catch {
-          // no bloquear
-        }
-        router.push("/workspaces")
+        // F5.4: el landing post-login es Hoy, no un canvas ni /workspaces.
+        router.push("/today")
         return
       }
       if (res.status === 401) {

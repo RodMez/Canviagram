@@ -11,9 +11,11 @@ export function middleware(request: NextRequest) {
   const isProtected =
     pathname.startsWith('/w/') ||
     pathname.startsWith('/workspaces') ||
+    pathname.startsWith('/today') ||
     pathname.startsWith('/settings') ||
     pathname.startsWith('/api/workspaces/') ||
-    pathname.startsWith('/api/ai/')
+    pathname.startsWith('/api/ai/') ||
+    pathname.startsWith('/api/today')
   if (!isProtected) return NextResponse.next()
   const isAuthenticated = request.cookies.has('__Host-session')
   if (!isAuthenticated) {
@@ -26,5 +28,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/w/:path*', '/workspaces/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*'],
+  matcher: ['/w/:path*', '/workspaces/:path*', '/today/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*', '/api/today'],
 }
