@@ -40,12 +40,13 @@ export type ParsedCommand =
   | { kind: 'command'; name: string; args: string[] }
   | { kind: 'plain' }
 
-// Comandos desconocidos → plain (el handler responde "/ayuda para ver comandos" sin LLM).
+// Comandos desconocidos → plain (el handler responde "/help para ver comandos" sin LLM).
 // Args normalizados: trim + uppercase (diseño F4.2 §7.2).
+// Soporta sufijo @BotName en grupos: /start@MiBot → start (se ignora el @sufijo).
 export function parseCommand(text: string | undefined): ParsedCommand {
   if (!text || !text.startsWith('/')) return { kind: 'plain' }
   const [rawName, ...rawArgs] = text.slice(1).split(/\s+/)
-  const name = rawName?.toLowerCase() ?? ''
+  const name = rawName?.split('@')[0]?.toLowerCase() ?? ''
   if (!KNOWN_COMMANDS.has(name)) return { kind: 'plain' }
   return { kind: 'command', name, args: rawArgs.map((a) => a.trim().toUpperCase()).filter(Boolean) }
 }
@@ -443,14 +444,14 @@ export function registerHandlers(bot: Bot): void {
       switch (parsed.name) {
         case 'start':
           await ctx.reply(
-            'Hola 👋\nSoy el asistente de Canviagram.\nVincula tu chat en Ajustes → Telegram usando /link CÓDIGO. Escribe /ayuda para ver comandos.',
+            'Hola 👋\nSoy el asistente de Canviagram.\nVincula tu chat en Ajustes → Telegram usando /link CÓDIGO. Escribe /help para ver comandos.\n\nComandos:\n/start — iniciar el bot y ver bienvenida\n/help — ver ayuda y comandos\n/link CÓDIGO — vincula este chat a tu cuenta\n/lista — tus workspaces\n/usar SLUG — elige dónde trabajar\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat',
             { parse_mode: 'HTML' }
           )
           return
         case 'help':
         case 'ayuda':
           await ctx.reply(
-            'Comandos:\n/link CÓDIGO — vincula este chat a tu cuenta\n/lista — tus workspaces\n/usar SLUG — elige dónde trabajar\n/estado — estado del vínculo\n/unlink — desvincula este chat\nEnvía un mensaje normal para crear nodos con IA.',
+            'Comandos:\n/start — iniciar el bot y ver bienvenida\n/help — ver ayuda y comandos\n/link CÓDIGO — vincula este chat a tu cuenta\n/lista — tus workspaces\n/usar SLUG — elige dónde trabajar\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\nEnvía un mensaje normal para crear nodos con IA.',
             { parse_mode: 'HTML' }
           )
           return
@@ -487,7 +488,7 @@ export function registerHandlers(bot: Bot): void {
 
     // Comando desconocido → reply sin LLM (diseño F4.2 §5.3).
     if (text.startsWith('/')) {
-      await ctx.reply('/ayuda para ver comandos', { parse_mode: 'HTML' })
+      await ctx.reply('/help para ver comandos', { parse_mode: 'HTML' })
       return
     }
 

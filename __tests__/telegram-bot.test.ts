@@ -119,6 +119,20 @@ describe('lib/telegram/bot', () => {
       expect(parseCommand('/usar mi-proyecto')).toEqual({ kind: 'command', name: 'usar', args: ['MI-PROYECTO'] })
       expect(parseCommand('/estado')).toEqual({ kind: 'command', name: 'estado', args: [] })
     })
+
+    it('/start@MiBot y /lista@MiBot en grupos → sufijo @ ignorado', () => {
+      expect(parseCommand('/start@MiBot')).toEqual({ kind: 'command', name: 'start', args: [] })
+      expect(parseCommand('/lista@MiBot')).toEqual({ kind: 'command', name: 'lista', args: [] })
+    })
+
+    it('/LINK@MiBot xyz2 → nombre antes de @, args normalizados a UPPERCASE', () => {
+      expect(parseCommand('/LINK@MiBot xyz2')).toEqual({ kind: 'command', name: 'link', args: ['XYZ2'] })
+      expect(parseCommand('/usar@MiBot mi-proyecto')).toEqual({ kind: 'command', name: 'usar', args: ['MI-PROYECTO'] })
+    })
+
+    it('/unknown@MiBot → nulo (desconocido aunque lleve sufijo)', () => {
+      expect(parseCommand('/unknown@MiBot')).toEqual({ kind: 'plain' })
+    })
   })
 
   describe('handleLink', () => {
