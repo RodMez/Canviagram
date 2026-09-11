@@ -50,7 +50,7 @@ describe('lib/demo/graph-ops', () => {
       expect(node.workspaceId).toBe('demo')
       expect(node.createdBy).toBe('demo')
       expect(node.status).toBe('todo')
-      expect(graph.nodes).toHaveLength(9)
+      expect(graph.nodes).toHaveLength(8)
     })
 
     it('rechaza status en nodos no-task (misma validación que prod)', () => {
@@ -83,13 +83,16 @@ describe('lib/demo/graph-ops', () => {
 
   describe('deleteNode', () => {
     it('borra el nodo y cascadea sus edges', () => {
-      const result = deleteNode(graph, 'demo-proj-1')
+      // F5.1: sin hub demo-proj-1; demo-task-2 concentra 3 edges (4, 5, 7)
+      const result = deleteNode(graph, 'demo-task-2')
       expect(result.success).toBe(true)
-      expect(result.nodeId).toBe('demo-proj-1')
-      // demo-proj-1 tiene 3 edges parent_of (1,2,3) + 1 related_to (7)
-      expect(result.removedEdgeIds).toHaveLength(4)
-      expect(graph.nodes.find((n) => n.id === 'demo-proj-1')).toBeUndefined()
-      expect(graph.edges.some((e) => e.sourceId === 'demo-proj-1' || e.targetId === 'demo-proj-1')).toBe(false)
+      expect(result.nodeId).toBe('demo-task-2')
+      expect(result.removedEdgeIds).toHaveLength(3)
+      expect(result.removedEdgeIds).toEqual(
+        expect.arrayContaining(['demo-edge-4', 'demo-edge-5', 'demo-edge-7'])
+      )
+      expect(graph.nodes.find((n) => n.id === 'demo-task-2')).toBeUndefined()
+      expect(graph.edges.some((e) => e.sourceId === 'demo-task-2' || e.targetId === 'demo-task-2')).toBe(false)
     })
 
     it('lanza NotFoundError si el nodo no existe', () => {
@@ -108,7 +111,7 @@ describe('lib/demo/graph-ops', () => {
       expect(edge.id).toMatch(/^e-[0-9a-f]{8}$/)
       expect(edge.workspaceId).toBe('demo')
       expect(edge.label).toBe('después')
-      expect(graph.edges).toHaveLength(9)
+      expect(graph.edges).toHaveLength(6)
     })
 
     it('rechaza self-loop (misma validación que prod)', () => {
@@ -139,8 +142,8 @@ describe('lib/demo/graph-ops', () => {
   describe('queryGraph', () => {
     it('retorna el grafo actual', () => {
       const result = queryGraph(graph)
-      expect(result.nodes).toHaveLength(8)
-      expect(result.edges).toHaveLength(8)
+      expect(result.nodes).toHaveLength(7)
+      expect(result.edges).toHaveLength(5)
     })
   })
 })

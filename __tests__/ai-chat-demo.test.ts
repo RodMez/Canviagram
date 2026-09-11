@@ -115,7 +115,7 @@ describe('POST /api/ai/chat-demo', () => {
 
     const streamArgs = mStreamText.mock.calls[0][0]
     expect(streamArgs.system).toContain('DEMO pública')
-    expect(streamArgs.system).toContain('demo-proj-1')
+    expect(streamArgs.system).toContain('demo-task-2')
     expect(streamArgs.system).toContain('demo-task-1 --[depends_on]--> demo-task-2')
     const tools = streamArgs.tools as Record<string, unknown>
     expect(tools).toBeDefined()
@@ -136,7 +136,7 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
     )
     expect(result).toMatchObject({ type: 'task', title: 'Publicar post', status: 'todo' })
     expect(result).not.toHaveProperty('workspaceId')
-    expect(graph.nodes).toHaveLength(9)
+    expect(graph.nodes).toHaveLength(8)
   })
 
   it('deleteNode cascadea edges y retorna removedEdgeIds', async () => {
@@ -144,14 +144,15 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
     const tools = buildDemoTools({ graph })
     const opts = { toolCallId: 'call-1', messages: [], context: {} }
 
-    const result = await tools.deleteNode.execute!({ nodeId: 'demo-proj-1' }, opts)
+    // F5.1: sin hub demo-proj-1; demo-task-2 concentra los edges 4, 5 y 7
+    const result = await tools.deleteNode.execute!({ nodeId: 'demo-task-2' }, opts)
     expect(result).toEqual({
       success: true,
-      nodeId: 'demo-proj-1',
-      removedEdgeIds: ['demo-edge-1', 'demo-edge-2', 'demo-edge-3', 'demo-edge-7'],
+      nodeId: 'demo-task-2',
+      removedEdgeIds: ['demo-edge-4', 'demo-edge-5', 'demo-edge-7'],
     })
-    expect(graph.nodes).toHaveLength(7)
-    expect(graph.edges).toHaveLength(4)
+    expect(graph.nodes).toHaveLength(6)
+    expect(graph.edges).toHaveLength(2)
   })
 
   it('queryGraph retorna nodos/edges serializados con summary', async () => {
@@ -164,9 +165,9 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
       edges: unknown[]
       summary: string
     }
-    expect(result.summary).toBe('8 nodos, 8 conexiones')
-    expect(result.nodes).toHaveLength(8)
-    expect(result.edges).toHaveLength(8)
+    expect(result.summary).toBe('7 nodos, 5 conexiones')
+    expect(result.nodes).toHaveLength(7)
+    expect(result.edges).toHaveLength(5)
   })
 })
 

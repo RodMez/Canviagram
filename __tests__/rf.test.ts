@@ -64,12 +64,12 @@ describe('rf.ts — storeToRfNodes', () => {
 
   it('convierte múltiples nodos', () => {
     const nodes = [
-      makeNode({ id: 'n1', type: 'project', positionX: 0, positionY: 0 }),
+      makeNode({ id: 'n1', type: 'task', positionX: 0, positionY: 0 }),
       makeNode({ id: 'n2', type: 'note', positionX: 50, positionY: 50 }),
     ]
     const rfNodes = storeToRfNodes(nodes, WORKSPACE_ID)
     expect(rfNodes).toHaveLength(2)
-    expect(rfNodes[0].type).toBe('project')
+    expect(rfNodes[0].type).toBe('task')
     expect(rfNodes[1].type).toBe('note')
   })
 

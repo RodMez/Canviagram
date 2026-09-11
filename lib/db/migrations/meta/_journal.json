@@ -29,6 +29,13 @@
       "when": 1789000000000,
       "tag": "0003_telegram_account_and_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789100090661,
+      "tag": "0004_project_to_workspace",
+      "breakpoints": true
     }
   ]
 }

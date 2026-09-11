@@ -35,10 +35,15 @@ describe('lib/demo/fixtures', () => {
   })
 
   describe('getDemoFixtures', () => {
-    it('devuelve 8 nodos y 8 edges', () => {
+    it('devuelve 7 nodos y 5 edges (F5.1: sin nodo-hub project)', () => {
       const { nodes, edges } = getDemoFixtures()
-      expect(nodes).toHaveLength(8)
-      expect(edges).toHaveLength(8)
+      expect(nodes).toHaveLength(7)
+      expect(edges).toHaveLength(5)
+    })
+
+    it('no contiene nodos de tipo project (F5.1: workspace = proyecto)', () => {
+      const { nodes } = getDemoFixtures()
+      expect(nodes.some((n) => (n.type as string) === 'project')).toBe(false)
     })
 
     it('devuelve arrays NUEVOS en cada llamada (reseed limpio)', () => {
@@ -96,10 +101,9 @@ describe('lib/demo/fixtures', () => {
       }
     })
 
-    it('los 3 tipos de edge están representados', () => {
+    it('depends_on y related_to están representados (sin hub parent_of tras F5.1)', () => {
       const { edges } = getDemoFixtures()
       const types = new Set(edges.map((e) => e.type))
-      expect(types.has('parent_of')).toBe(true)
       expect(types.has('depends_on')).toBe(true)
       expect(types.has('related_to')).toBe(true)
     })
@@ -109,8 +113,8 @@ describe('lib/demo/fixtures', () => {
     it('serializa nodos/edges al shape del body de chat-demo', () => {
       const { nodes, edges } = getDemoFixtures()
       const payload = demoGraphToPayload({ nodes, edges })
-      expect(payload.nodes).toHaveLength(8)
-      expect(payload.edges).toHaveLength(8)
+      expect(payload.nodes).toHaveLength(7)
+      expect(payload.edges).toHaveLength(5)
       const node = payload.nodes[0]
       expect(node).toEqual({
         id: node.id,

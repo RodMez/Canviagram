@@ -1,5 +1,4 @@
 import type { NodeTypes, EdgeTypes } from '@xyflow/react'
-import { ProjectNode } from './ProjectNode'
 import { TaskNode } from './TaskNode'
 import { NoteNode } from './NoteNode'
 import { IdeaNode } from './IdeaNode'
@@ -8,8 +7,8 @@ import { ResourceNode } from './ResourceNode'
 import { CustomEdge } from '../edges/CustomEdge'
 
 // Registry de tipos de nodo (mapea type → componente).
+// F5.1: sin 'project' — un workspace = un proyecto.
 export const nodeTypes = {
-  project: ProjectNode,
   task: TaskNode,
   note: NoteNode,
   idea: IdeaNode,

@@ -14,7 +14,6 @@ import { sql, relations } from 'drizzle-orm'
 // ============================================================
 
 export const NODE_TYPES = [
-  'project',
   'task',
   'note',
   'idea',
@@ -140,6 +139,7 @@ export const workspaces = sqliteTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
     slug: text('slug').notNull(),
+    description: text('description'),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),

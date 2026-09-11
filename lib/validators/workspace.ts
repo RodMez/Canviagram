@@ -32,9 +32,15 @@ export const updateWorkspaceSchema = z
       .max(50, 'El slug no puede exceder 50 caracteres')
       .regex(slugRegex, 'El slug solo puede contener letras minúsculas, números y guiones, y no puede empezar ni terminar con guión')
       .optional(),
+    description: z
+      .string()
+      .trim()
+      .max(5000, 'La descripción no puede exceder 5000 caracteres')
+      .optional()
+      .nullable(),
   })
-  .refine((data) => data.name !== undefined || data.slug !== undefined, {
-    message: 'Debe proporcionar al menos un campo (name o slug)',
+  .refine((data) => data.name !== undefined || data.slug !== undefined || data.description !== undefined, {
+    message: 'Debe proporcionar al menos un campo (name, slug o description)',
   })
 
 export const inviteSchema = z.object({

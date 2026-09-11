@@ -66,12 +66,12 @@ describe('canvas-service', () => {
 
   it('createNode y listNodes - crea y lista correctamente', async () => {
     const node = await canvasService.createNode(testWorkspaceId, testUserId, {
-      type: 'project',
-      title: 'Proyecto Test',
+      type: 'task',
+      title: 'Tarea Test',
     })
     expect(node).toBeDefined()
-    expect(node.title).toBe('Proyecto Test')
-    expect(node.type).toBe('project')
+    expect(node.title).toBe('Tarea Test')
+    expect(node.type).toBe('task')
 
     const list = await canvasService.listNodes(testWorkspaceId, testUserId)
     expect(list.length).toBe(1)
@@ -185,8 +185,8 @@ describe('canvas-service', () => {
 
   it('createEdge válido y listEdges', async () => {
     const n1 = await canvasService.createNode(testWorkspaceId, testUserId, {
-      type: 'project',
-      title: 'Proyecto',
+      type: 'note',
+      title: 'Nota origen',
     })
     const n2 = await canvasService.createNode(testWorkspaceId, testUserId, {
       type: 'task',
@@ -243,12 +243,12 @@ describe('canvas-service', () => {
 
   it('deleteEdge elimina correctamente', async () => {
     const n1 = await canvasService.createNode(testWorkspaceId, testUserId, {
-      type: 'project',
-      title: 'P1',
+      type: 'note',
+      title: 'N1',
     })
     const n2 = await canvasService.createNode(testWorkspaceId, testUserId, {
-      type: 'project',
-      title: 'P2',
+      type: 'note',
+      title: 'N2',
     })
     const edge = await canvasService.createEdge(testWorkspaceId, testUserId, {
       sourceId: n1.id,
@@ -295,8 +295,8 @@ describe('canvas-service', () => {
 
   it('getWorkspaceGraph retorna nodos y edges filtrados - edges huérfanos no retornados', async () => {
     const n1 = await canvasService.createNode(testWorkspaceId, testUserId, {
-      type: 'project',
-      title: 'Proj',
+      type: 'note',
+      title: 'Nota base',
     })
     const n2 = await canvasService.createNode(testWorkspaceId, testUserId, {
       type: 'task',

@@ -2,13 +2,15 @@ import type { Node, Edge } from '@/lib/db/schema'
 import { serializeNode, serializeEdge } from '@/lib/ai/serialize'
 
 // ============================================================
-// Fixtures de la DEMO pública (F4.1)
+// Fixtures de la DEMO pública (F4.1, revisada F5.1)
 //
-// Escena estática de 8 nodos / 8 edges con shape EXACTO de DB
+// Escena estática de 7 nodos / 5 edges con shape EXACTO de DB
 // (Node/Edge de lib/db/schema.ts) para reutilizar rf.ts y
 // storeToRfNodes/Edges sin cambios. Cada llamada a
 // getDemoFixtures() devuelve arrays NUEVOS (reseed limpio en
 // cada mount de DemoLanding). Nada de esto toca DB ni sesión.
+// F5.1: sin nodo-hub `project` (un workspace = un proyecto);
+// la descripción del proyecto vive en el workspace, no en el canvas.
 // ============================================================
 
 export const DEMO_WORKSPACE_ID = 'demo'
@@ -63,19 +65,11 @@ function makeEdge(
 }
 
 /**
- * Escena demo (8 nodos / 8 edges — mezcla project/task/note/person/resource).
+ * Escena demo (7 nodos / 5 edges — mezcla task/note/person/resource).
  * Arrays NUEVOS en cada llamada: refrescar = remount = reseed limpio.
  */
 export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [
-    makeNode({
-      id: 'demo-proj-1',
-      type: 'project',
-      title: 'Lanzamiento de blog personal',
-      content: 'Plan de 4 semanas para publicar el blog',
-      positionX: 0,
-      positionY: 40,
-    }),
     makeNode({
       id: 'demo-task-1',
       type: 'task',
@@ -83,7 +77,7 @@ export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
       content: 'Mockup responsive en Figma',
       status: 'todo',
       positionX: -260,
-      positionY: 200,
+      positionY: 60,
     }),
     makeNode({
       id: 'demo-task-2',
@@ -92,7 +86,7 @@ export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
       content: 'De 800 a 1200 palabras cada uno',
       status: 'in_progress',
       positionX: -40,
-      positionY: 200,
+      positionY: 60,
     }),
     makeNode({
       id: 'demo-task-3',
@@ -101,7 +95,7 @@ export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
       content: 'Desplegar y verificar dominio',
       status: 'done',
       positionX: 180,
-      positionY: 200,
+      positionY: 60,
     }),
     makeNode({
       id: 'demo-note-1',
@@ -138,13 +132,10 @@ export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
   ]
 
   const edges: Edge[] = [
-    makeEdge({ id: 'demo-edge-1', sourceId: 'demo-proj-1', targetId: 'demo-task-1', type: 'parent_of' }),
-    makeEdge({ id: 'demo-edge-2', sourceId: 'demo-proj-1', targetId: 'demo-task-2', type: 'parent_of' }),
-    makeEdge({ id: 'demo-edge-3', sourceId: 'demo-proj-1', targetId: 'demo-task-3', type: 'parent_of' }),
     makeEdge({ id: 'demo-edge-4', sourceId: 'demo-task-1', targetId: 'demo-task-2', type: 'depends_on', label: 'requiere' }),
     makeEdge({ id: 'demo-edge-5', sourceId: 'demo-person-1', targetId: 'demo-task-2', type: 'related_to', label: 'asignada' }),
     makeEdge({ id: 'demo-edge-6', sourceId: 'demo-person-2', targetId: 'demo-task-1', type: 'related_to', label: 'responsable' }),
-    makeEdge({ id: 'demo-edge-7', sourceId: 'demo-note-1', targetId: 'demo-proj-1', type: 'related_to', label: 'inspiración' }),
+    makeEdge({ id: 'demo-edge-7', sourceId: 'demo-note-1', targetId: 'demo-task-2', type: 'related_to', label: 'inspiración' }),
     makeEdge({ id: 'demo-edge-8', sourceId: 'demo-res-1', targetId: 'demo-task-3', type: 'related_to', label: 'base' }),
   ]
 

@@ -11,7 +11,6 @@ import {
   LogOut,
   Settings,
   FolderKanban,
-  LayoutGrid,
   Shuffle,
 } from 'lucide-react'
 import { useCanvasStore } from '@/store/canvas-store'
@@ -45,15 +44,13 @@ type ToolbarProps = {
   userEmail?: string | null
   /** Abre CreateNodePopup en el centro del viewport (lo provee el padre). */
   onCreateNode?: () => void
-  /** Abre el modal de templates de proyecto. */
-  onOpenTemplates?: () => void
   /** Reordena el grafo a una grilla limpia. */
   onReorder?: () => void
   /** Id del workspace actual (para la campana de notificaciones). */
   workspaceId?: string
 }
 
-export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onOpenTemplates, onReorder, workspaceId }: ToolbarProps) {
+export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onReorder, workspaceId }: ToolbarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const isPanelCollapsed = useCanvasStore((s) => s.isPanelCollapsed)
@@ -137,18 +134,6 @@ export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onOp
           className="flex h-8 w-8 items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90"
         >
           <Plus className="h-4 w-4" />
-        </button>
-      ) : null}
-
-      {/* Templates de proyecto (Fase 0): materializa un proyecto pre-armado */}
-      {onOpenTemplates ? (
-        <button
-          onClick={onOpenTemplates}
-          aria-label="Templates de proyecto"
-          title="Templates de proyecto"
-          className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-muted"
-        >
-          <LayoutGrid className="h-4 w-4" />
         </button>
       ) : null}
 

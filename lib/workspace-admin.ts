@@ -128,6 +128,7 @@ export async function updateWorkspace(
   const updateData: Record<string, unknown> = { updatedAt: now }
   if (parsed!.name !== undefined) updateData.name = parsed!.name
   if (parsed!.slug !== undefined) updateData.slug = parsed!.slug
+  if (parsed!.description !== undefined) updateData.description = parsed!.description
 
   const [updated] = await db
     .update(workspaces)

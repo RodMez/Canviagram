@@ -189,8 +189,8 @@ describe('node validators', () => {
 
   it('20 - válido con posición', () => {
     const result = createNodeSchema.safeParse({
-      type: 'project',
-      title: 'Proyecto',
+      type: 'task',
+      title: 'Tarea',
       positionX: 100,
       positionY: 200,
     })
@@ -199,8 +199,8 @@ describe('node validators', () => {
 
   it('21 - posición NaN debe fallar', () => {
     const result = createNodeSchema.safeParse({
-      type: 'project',
-      title: 'Proyecto',
+      type: 'task',
+      title: 'Tarea',
       positionX: NaN,
     })
     expect(result.success).toBe(false)

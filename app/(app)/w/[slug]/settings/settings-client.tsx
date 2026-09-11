@@ -12,6 +12,7 @@ type WorkspaceSettings = {
   id: string
   name: string
   slug: string
+  description: string | null
   role: string
 }
 
@@ -96,6 +97,7 @@ export default function SettingsClient({
   // General
   const [name, setName] = useState(workspace.name)
   const [slug, setSlug] = useState(workspace.slug)
+  const [description, setDescription] = useState(workspace.description ?? '')
   const [generalMsg, setGeneralMsg] = useState<Feedback | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -154,9 +156,13 @@ export default function SettingsClient({
     setSaving(true)
     setGeneralMsg(null)
     try {
-      const body: { name?: string; slug?: string } = {}
+      const body: { name?: string; slug?: string; description?: string | null } = {}
       if (name !== workspace.name) body.name = name
       if (slug !== workspace.slug) body.slug = slug
+      // F5.1: la descripción del proyecto vive en el workspace (nullable).
+      const trimmedDescription = description.trim()
+      const nextDescription = trimmedDescription === '' ? null : trimmedDescription
+      if (nextDescription !== (workspace.description ?? null)) body.description = nextDescription
 
       if (Object.keys(body).length === 0) {
         setGeneralMsg({ kind: 'ok', text: 'Sin cambios' })
@@ -452,6 +458,23 @@ export default function SettingsClient({
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring disabled:opacity-60"
                 />
                 <p className="text-xs text-zinc-500">Identificador único de la URL del workspace.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="ws-description" className="text-sm font-medium">
+                  Descripción
+                </label>
+                <textarea
+                  id="ws-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  disabled={!canAdmin}
+                  rows={3}
+                  maxLength={5000}
+                  placeholder="¿De qué trata este proyecto?"
+                  className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring disabled:opacity-60"
+                />
+                <p className="text-xs text-zinc-500">Qué es este proyecto y en qué punto está. Vacía para quitarla.</p>
               </div>
 
               {generalMsg ? (
