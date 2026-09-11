@@ -1,5 +1,5 @@
 ﻿import { db } from '@/lib/db'
-import { nodes, edges } from '@/lib/db/schema'
+import { nodes, edges, type RecurrenceRule } from '@/lib/db/schema'
 import { eq, and, isNull, or, asc } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { createNodeSchema, updateNodeSchema } from '@/lib/validators/node'
@@ -45,20 +45,26 @@ function clampOffset(offset: number | undefined): number {
 export const DEFAULT_REMINDER_OFFSET_MIN = 15
 
 /**
- * Resuelve dueDate/reminderOffsetMin para insert/update.
+ * Resuelve dueDate/reminderOffsetMin/recurrenceRule para insert/update.
  * - Si se fija dueDate y no hay offset, usa el default (15 min antes).
  * - Si cambia dueDate u offset, reinicia notifiedAt para re-armar el sweep.
+ * - Sin dueDate no hay recurrencia: borrar la fecha (dueDate null) limpia
+ *   recurrenceRule (F5.3).
  */
 export function resolveReminderFields(
-  parsed: { dueDate?: number | null; reminderOffsetMin?: number | null },
-  existing: { dueDate: Date | null; reminderOffsetMin: number | null; notifiedAt: Date | null }
-): { dueDate: Date | null; reminderOffsetMin: number | null; notifiedAt: Date | null } {
+  parsed: { dueDate?: number | null; reminderOffsetMin?: number | null; recurrenceRule?: RecurrenceRule | null },
+  existing: { dueDate: Date | null; reminderOffsetMin: number | null; notifiedAt: Date | null; recurrenceRule?: RecurrenceRule | null }
+): { dueDate: Date | null; reminderOffsetMin: number | null; notifiedAt: Date | null; recurrenceRule: RecurrenceRule | null } {
   const dueMs = parsed.dueDate !== undefined ? parsed.dueDate : existing.dueDate?.getTime() ?? null
   let offset = parsed.reminderOffsetMin !== undefined ? parsed.reminderOffsetMin : existing.reminderOffsetMin
 
   if (dueMs != null && offset == null) {
     offset = DEFAULT_REMINDER_OFFSET_MIN
   }
+
+  // Recurrencia sin fecha base no tiene sentido: se limpia junto con dueDate.
+  const recurrenceRule =
+    dueMs == null ? null : (parsed.recurrenceRule !== undefined ? parsed.recurrenceRule : (existing.recurrenceRule ?? null))
 
   const effectiveDueChanged =
     parsed.dueDate !== undefined && (parsed.dueDate ?? null) !== (existing.dueDate?.getTime() ?? null)
@@ -70,6 +76,7 @@ export function resolveReminderFields(
     dueDate: dueMs != null ? new Date(dueMs) : null,
     reminderOffsetMin: offset,
     notifiedAt: effectiveDueChanged || effectiveOffsetChanged ? null : existing.notifiedAt,
+    recurrenceRule,
   }
 }
 
@@ -107,6 +114,7 @@ export async function createNode(workspaceId: string, userId: string, input: unk
     dueDate: null,
     reminderOffsetMin: null,
     notifiedAt: null,
+    recurrenceRule: null,
   })
 
   const [inserted] = await db
@@ -122,6 +130,7 @@ export async function createNode(workspaceId: string, userId: string, input: unk
       dueDate: reminder.dueDate,
       reminderOffsetMin: reminder.reminderOffsetMin,
       notifiedAt: null,
+      recurrenceRule: reminder.recurrenceRule,
       positionX: slot.x,
       positionY: slot.y,
       createdAt: now,
@@ -173,7 +182,14 @@ export async function updateNode(
     dueDate: existing.dueDate,
     reminderOffsetMin: existing.reminderOffsetMin,
     notifiedAt: existing.notifiedAt,
+    recurrenceRule: existing.recurrenceRule,
   })
+
+  // El schema valida recurrencia↔dueDate dentro del payload; aquí se valida
+  // contra el estado efectivo (dueDate puede venir del nodo existente).
+  if (reminder.recurrenceRule && !reminder.dueDate) {
+    throw new ValidationError('La recurrencia requiere una fecha límite (dueDate)')
+  }
 
   const updateData: Record<string, unknown> = {
     updatedAt: now,
@@ -191,6 +207,9 @@ export async function updateNode(
     updateData.reminderOffsetMin = reminder.reminderOffsetMin
   }
   if (reminder.notifiedAt !== existing.notifiedAt) updateData.notifiedAt = reminder.notifiedAt
+  if ((reminder.recurrenceRule ?? null) !== (existing.recurrenceRule ?? null)) {
+    updateData.recurrenceRule = reminder.recurrenceRule
+  }
 
   const [updated] = await db
     .update(nodes)

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { NODE_TYPES, NODE_STATUSES } from '@/lib/db/schema'
+import { NODE_TYPES, NODE_STATUSES, RECURRENCE_RULES } from '@/lib/db/schema'
 
 export const createNodeSchema = z
   .object({
@@ -38,6 +38,12 @@ export const createNodeSchema = z
       .max(525600, 'El recordatorio no puede exceder 1 año')
       .optional()
       .nullable(),
+    recurrenceRule: z
+      .enum(RECURRENCE_RULES, {
+        message: 'Regla de recurrencia no válida',
+      })
+      .optional()
+      .nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.status && data.type !== 'task') {
@@ -45,6 +51,13 @@ export const createNodeSchema = z
         code: z.ZodIssueCode.custom,
         path: ['status'],
         message: 'Solo los nodos de tipo task pueden tener estado',
+      })
+    }
+    if (data.recurrenceRule && !data.dueDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recurrenceRule'],
+        message: 'La recurrencia requiere una fecha límite (dueDate)',
       })
     }
   })
@@ -88,6 +101,12 @@ export const updateNodeSchema = z
       .max(525600, 'El recordatorio no puede exceder 1 año')
       .optional()
       .nullable(),
+    recurrenceRule: z
+      .enum(RECURRENCE_RULES, {
+        message: 'Regla de recurrencia no válida',
+      })
+      .optional()
+      .nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.status && data.type && data.type !== 'task') {
@@ -95,6 +114,13 @@ export const updateNodeSchema = z
         code: z.ZodIssueCode.custom,
         path: ['status'],
         message: 'Solo los nodos de tipo task pueden tener estado',
+      })
+    }
+    if (data.recurrenceRule && !data.dueDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recurrenceRule'],
+        message: 'La recurrencia requiere una fecha límite (dueDate)',
       })
     }
     if (data.status && !data.type) {

@@ -1,6 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
-import { NODE_TYPES } from '@/lib/db/schema'
+import { NODE_TYPES, RECURRENCE_RULES } from '@/lib/db/schema'
 import { computeDagreLayout } from '@/lib/canvas/dagre-layout'
 import type { DemoGraph } from '@/lib/demo/graph-ops'
 import {
@@ -26,7 +26,7 @@ export function buildDemoTools(ctx: { graph: DemoGraph }) {
   return {
     createNode: tool({
       description:
-        'Crea un nodo nuevo en el canvas. Tipos válidos: task, note, idea, person, resource. Solo tasks pueden tener status (todo, in_progress, done). La posición en el canvas la asigna el sistema automáticamente. Opcionalmente fija dueDate (epoch ms) y reminderOffsetMin (minutos ANTES de la fecha límite; si fijas dueDate sin offset se usa 15).',
+        'Crea un nodo nuevo en el canvas. Tipos válidos: task, note, idea, person, resource. Solo tasks pueden tener status (todo, in_progress, done). La posición en el canvas la asigna el sistema automáticamente. Opcionalmente fija dueDate (epoch ms) y reminderOffsetMin (minutos ANTES de la fecha límite; si fijas dueDate sin offset se usa 15). Para recordatorios recurrentes fija recurrenceRule (daily, weekly, monthly), que requiere dueDate.',
       inputSchema: z.object({
         type: z.enum(NODE_TYPES),
         title: z.string().min(1).max(200),
@@ -34,13 +34,14 @@ export function buildDemoTools(ctx: { graph: DemoGraph }) {
         status: z.enum(['todo', 'in_progress', 'done']).optional().nullable(),
         dueDate: z.number().int().optional().nullable(),
         reminderOffsetMin: z.number().int().min(0).optional().nullable(),
+        recurrenceRule: z.enum(RECURRENCE_RULES).optional().nullable(),
       }),
       execute: async (input) => serializeNode(createNode(ctx.graph, input)),
     }),
 
     updateNode: tool({
       description:
-        'Actualiza un nodo existente por ID (título, contenido, tipo, estado, dueDate o reminderOffsetMin; nunca la posición)',
+        'Actualiza un nodo existente por ID (título, contenido, tipo, estado, dueDate, reminderOffsetMin o recurrenceRule; nunca la posición). recurrenceRule (daily, weekly, monthly) requiere dueDate; borrar dueDate limpia la recurrencia.',
       inputSchema: z.object({
         nodeId: z.string().min(1),
         type: z.enum(NODE_TYPES).optional(),
@@ -49,6 +50,7 @@ export function buildDemoTools(ctx: { graph: DemoGraph }) {
         status: z.enum(['todo', 'in_progress', 'done']).optional().nullable(),
         dueDate: z.number().int().optional().nullable(),
         reminderOffsetMin: z.number().int().min(0).optional().nullable(),
+        recurrenceRule: z.enum(RECURRENCE_RULES).optional().nullable(),
       }),
       execute: async ({ nodeId, ...rest }) =>
         serializeNode(updateNode(ctx.graph, nodeId, rest)),

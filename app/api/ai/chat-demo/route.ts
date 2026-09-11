@@ -150,6 +150,7 @@ export async function POST(request: Request) {
       dueDate: null,
       reminderOffsetMin: null,
       notifiedAt: null,
+      recurrenceRule: null,
       positionX: n.positionX,
       positionY: n.positionY,
       createdAt: DEMO_CREATED_AT,

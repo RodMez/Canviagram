@@ -192,6 +192,87 @@ describe('reminders (Fase 3)', () => {
     expect(notifs).toHaveLength(2)
   })
 
+  it('recurrencia daily: tras disparar, dueDate avanza 1 día y notifiedAt vuelve a NULL', async () => {
+    // SQLite guarda timestamps en segundos: truncar ms para comparar exacto.
+    const dueDate = new Date(Math.floor(Date.now() / 1000) * 1000 - 2 * 60_000) // vencido hace 2 min
+    const [node] = await db
+      .insert(nodes)
+      .values({
+        id: uuidv4(),
+        workspaceId: wsId,
+        createdBy: ownerId,
+        type: 'task',
+        title: 'Regar plantas',
+        content: null,
+        status: 'todo',
+        dueDate,
+        reminderOffsetMin: 0,
+        notifiedAt: null,
+        recurrenceRule: 'daily',
+        positionX: 0,
+        positionY: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      })
+      .returning()
+
+    const result = await runReminderSweep(new Date())
+    expect(result.reminded).toBe(1)
+
+    const updated = await db.select().from(nodes).where(eq(nodes.id, node!.id)).get()
+    // Reprogramado: +1 día exacto, listo para el siguiente sweep.
+    expect(updated!.dueDate!.getTime()).toBe(dueDate.getTime() + 24 * 60 * 60_000)
+    expect(updated!.notifiedAt).toBeNull()
+    expect(updated!.recurrenceRule).toBe('daily')
+
+    // El body avisa que se repite.
+    const notifs = await db.select().from(notifications).where(eq(notifications.nodeId, node!.id)).all()
+    expect(notifs.length).toBeGreaterThan(0)
+    expect(notifs[0].body).toContain('se repite cada día')
+  })
+
+  it('sin recurrencia: comportamiento idéntico al actual (notifiedAt queda fijo)', async () => {
+    const [node] = await db
+      .insert(nodes)
+      .values({
+        id: uuidv4(),
+        workspaceId: wsId,
+        createdBy: ownerId,
+        type: 'task',
+        title: 'Puntual',
+        content: null,
+        status: 'todo',
+        dueDate: new Date(Date.now() - 60_000),
+        reminderOffsetMin: 0,
+        notifiedAt: null,
+        recurrenceRule: null,
+        positionX: 0,
+        positionY: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      })
+      .returning()
+
+    await runReminderSweep(new Date())
+
+    const updated = await db.select().from(nodes).where(eq(nodes.id, node!.id)).get()
+    expect(updated!.notifiedAt).not.toBeNull()
+    expect(updated!.recurrenceRule).toBeNull()
+
+    const notifs = await db.select().from(notifications).where(eq(notifications.nodeId, node!.id)).all()
+    expect(notifs[0].body).not.toContain('se repite')
+  })
+
+  it('validators: recurrenceRule requiere dueDate', () => {
+    expect(
+      createNodeSchema.safeParse({ type: 'task', title: 'T', dueDate: 1_700_000_000_000, recurrenceRule: 'weekly' }).success
+    ).toBe(true)
+    const bad = createNodeSchema.safeParse({ type: 'task', title: 'T', recurrenceRule: 'weekly' })
+    expect(bad.success).toBe(false)
+  })
+
   it('sweep NO notifica nodos cuyo recordatorio aún no llegó', async () => {
     const [node] = await db
       .insert(nodes)

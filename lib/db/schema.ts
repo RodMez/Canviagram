@@ -25,6 +25,9 @@ export type NodeType = (typeof NODE_TYPES)[number]
 export const NODE_STATUSES = ['todo', 'in_progress', 'done'] as const
 export type NodeStatus = (typeof NODE_STATUSES)[number]
 
+export const RECURRENCE_RULES = ['daily', 'weekly', 'monthly'] as const
+export type RecurrenceRule = (typeof RECURRENCE_RULES)[number]
+
 export const EDGE_TYPES = ['depends_on', 'parent_of', 'related_to'] as const
 export type EdgeType = (typeof EDGE_TYPES)[number]
 
@@ -234,6 +237,7 @@ export const nodes = sqliteTable(
     dueDate: integer('due_date', { mode: 'timestamp' }),
     reminderOffsetMin: integer('reminder_offset_min'),
     notifiedAt: integer('notified_at', { mode: 'timestamp' }),
+    recurrenceRule: text('recurrence_rule', { enum: RECURRENCE_RULES }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),

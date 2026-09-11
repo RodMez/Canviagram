@@ -45,6 +45,7 @@ function makeNode(
     dueDate: null,
     reminderOffsetMin: null,
     notifiedAt: null,
+    recurrenceRule: null,
     createdAt: DEMO_CREATED_AT,
     updatedAt: DEMO_CREATED_AT,
     deletedAt: null,

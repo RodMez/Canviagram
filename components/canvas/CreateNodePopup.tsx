@@ -55,6 +55,7 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose }: Cr
           dueDate: null,
           reminderOffsetMin: null,
           notifiedAt: null,
+          recurrenceRule: null,
           positionX: flowPos.x,
           positionY: flowPos.y,
           createdAt: new Date(),

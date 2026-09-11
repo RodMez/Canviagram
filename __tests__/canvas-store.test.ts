@@ -18,6 +18,7 @@ function makeNode(overrides: Partial<Node> = {}): Node {
     dueDate: null,
     reminderOffsetMin: null,
     notifiedAt: null,
+    recurrenceRule: null,
     positionX: 0,
     positionY: 0,
     createdAt: new Date('2026-01-01'),

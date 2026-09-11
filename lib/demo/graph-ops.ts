@@ -54,6 +54,7 @@ export function createNode(graph: DemoGraph, input: unknown): Node {
     dueDate: parsed!.dueDate ? new Date(parsed!.dueDate) : null,
     reminderOffsetMin: parsed!.reminderOffsetMin ?? null,
     notifiedAt: null,
+    recurrenceRule: parsed!.recurrenceRule ?? null,
     positionX: parsed!.positionX ?? 0,
     positionY: parsed!.positionY ?? 0,
     createdAt: DEMO_CREATED_AT,
@@ -80,18 +81,25 @@ export function updateNode(graph: DemoGraph, nodeId: string, input: unknown): No
     throw new ValidationError('Solo los nodos de tipo task pueden tener estado')
   }
 
+  const effectiveDueDate =
+    parsed!.dueDate !== undefined
+      ? parsed!.dueDate
+        ? new Date(parsed!.dueDate)
+        : null
+      : existing.dueDate
   const updated: Node = {
     ...existing,
     type: effectiveType,
     title: parsed!.title ?? existing.title,
     content: parsed!.content !== undefined ? parsed!.content : existing.content,
     status: effectiveStatus,
-    dueDate:
-      parsed!.dueDate !== undefined
-        ? parsed!.dueDate
-          ? new Date(parsed!.dueDate)
-          : null
-        : existing.dueDate,
+    dueDate: effectiveDueDate,
+    recurrenceRule:
+      effectiveDueDate == null
+        ? null
+        : parsed!.recurrenceRule !== undefined
+          ? parsed!.recurrenceRule
+          : existing.recurrenceRule,
     reminderOffsetMin:
       parsed!.reminderOffsetMin !== undefined
         ? parsed!.reminderOffsetMin

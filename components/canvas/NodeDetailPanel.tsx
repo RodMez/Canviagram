@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useCanvasStore, selectSelectedNode } from '@/store/canvas-store'
 import { useDebouncedSave, createNodeSaveFn } from '@/hooks/useDebouncedSave'
-import { NODE_TYPES, NODE_STATUSES, type NodeType, type NodeStatus } from '@/lib/db/schema'
+import { NODE_TYPES, NODE_STATUSES, RECURRENCE_RULES, type NodeType, type NodeStatus, type RecurrenceRule } from '@/lib/db/schema'
 import { isDemoWorkspace } from '@/lib/demo/fixtures'
 
 type NodeDetailPanelProps = { workspaceId: string; userId: string }
@@ -21,6 +21,7 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
   const [status, setStatus] = useState<NodeStatus>(node?.status ?? 'todo')
   const [dueDate, setDueDate] = useState<number | null>(node?.dueDate ? node.dueDate.getTime() : null)
   const [reminderOffsetMin, setReminderOffsetMin] = useState<number | null>(node?.reminderOffsetMin ?? null)
+  const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | null>(node?.recurrenceRule ?? null)
 
   const save = useDebouncedSave({
     fn: isDemo
@@ -45,6 +46,7 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
     setStatus(node?.status ?? 'todo')
     setDueDate(node?.dueDate ? node.dueDate.getTime() : null)
     setReminderOffsetMin(node?.reminderOffsetMin ?? null)
+    setRecurrenceRule(node?.recurrenceRule ?? null)
   }, [node?.id])
   /* eslint-enable react-hooks/exhaustive-deps */
 
@@ -84,6 +86,13 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
     { value: 60, label: '1 h antes' },
     { value: 1440, label: '1 día antes' },
     { value: 10080, label: '1 semana antes' },
+  ]
+
+  const RECURRENCE_OPTIONS: Array<{ value: RecurrenceRule | null; label: string }> = [
+    { value: null, label: 'No se repite' },
+    { value: 'daily', label: 'Cada día' },
+    { value: 'weekly', label: 'Cada semana' },
+    { value: 'monthly', label: 'Cada mes' },
   ]
 
   return (
@@ -157,7 +166,13 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
               const v = e.target.value
               const next = v ? new Date(v).getTime() : null
               setDueDate(next)
-              save.trigger({ dueDate: next })
+              // Sin fecha no hay recurrencia (el servidor también la limpia).
+              if (next == null && recurrenceRule != null) {
+                setRecurrenceRule(null)
+                save.trigger({ dueDate: next, recurrenceRule: null })
+              } else {
+                save.trigger({ dueDate: next })
+              }
             }}
             onBlur={() => save.flush()}
             className={fieldCls}
@@ -178,6 +193,29 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
             className={fieldCls}
           >
             {REMINDER_OPTIONS.map((o) => (
+              <option key={o.value ?? 'none'} value={o.value ?? ''}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium text-muted-foreground">Repetir</span>
+          <select
+            value={recurrenceRule ?? ''}
+            disabled={dueDate == null}
+            title={dueDate == null ? 'Fija una fecha límite para activar la repetición' : undefined}
+            onChange={(e) => {
+              const raw = e.target.value
+              const next = (raw === '' ? null : raw) as RecurrenceRule | null
+              setRecurrenceRule(next)
+              save.trigger({ recurrenceRule: next })
+            }}
+            onBlur={() => save.flush()}
+            className={fieldCls}
+          >
+            {RECURRENCE_OPTIONS.map((o) => (
               <option key={o.value ?? 'none'} value={o.value ?? ''}>
                 {o.label}
               </option>

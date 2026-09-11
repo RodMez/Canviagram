@@ -2,7 +2,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import * as canvasService from '@/lib/canvas-service'
 import { serializeNode, serializeEdge } from '@/lib/ai/serialize'
-import { NODE_TYPES } from '@/lib/db/schema'
+import { NODE_TYPES, RECURRENCE_RULES } from '@/lib/db/schema'
 
 // Nota: el SDK ai v7 usa `inputSchema` (no `parameters` como en v4).
 // El diseño 1.2 usa `parameters`; se adapta a `inputSchema` para v7.
@@ -19,7 +19,7 @@ export function buildTools(ctx: ToolContext) {
   return {
     createNode: tool({
       description:
-        'Crea un nodo nuevo en el canvas. Tipos válidos: task, note, idea, person, resource. Solo tasks pueden tener status (todo, in_progress, done). La posición en el canvas la asigna el sistema automáticamente. Opcionalmente fija dueDate (epoch ms) y reminderOffsetMin (minutos ANTES de la fecha límite; si fijas dueDate sin offset se usa 15).',
+        'Crea un nodo nuevo en el canvas. Tipos válidos: task, note, idea, person, resource. Solo tasks pueden tener status (todo, in_progress, done). La posición en el canvas la asigna el sistema automáticamente. Opcionalmente fija dueDate (epoch ms) y reminderOffsetMin (minutos ANTES de la fecha límite; si fijas dueDate sin offset se usa 15). Para recordatorios recurrentes fija recurrenceRule (daily, weekly, monthly), que requiere dueDate.',
       inputSchema: z.object({
         type: z.enum(NODE_TYPES),
         title: z.string().min(1).max(200),
@@ -27,6 +27,7 @@ export function buildTools(ctx: ToolContext) {
         status: z.enum(['todo', 'in_progress', 'done']).optional().nullable(),
         dueDate: z.number().int().optional().nullable(),
         reminderOffsetMin: z.number().int().min(0).optional().nullable(),
+        recurrenceRule: z.enum(RECURRENCE_RULES).optional().nullable(),
       }),
       execute: async (input) => {
         const node = await canvasService.createNode(ctx.workspaceId, ctx.userId, input)
@@ -36,7 +37,7 @@ export function buildTools(ctx: ToolContext) {
 
     updateNode: tool({
       description:
-        'Actualiza un nodo existente por ID (título, contenido, tipo, estado, dueDate o reminderOffsetMin; nunca la posición)',
+        'Actualiza un nodo existente por ID (título, contenido, tipo, estado, dueDate, reminderOffsetMin o recurrenceRule; nunca la posición). recurrenceRule (daily, weekly, monthly) requiere dueDate; borrar dueDate limpia la recurrencia.',
       inputSchema: z.object({
         nodeId: z.string().min(1),
         type: z.enum(NODE_TYPES).optional(),
@@ -45,6 +46,7 @@ export function buildTools(ctx: ToolContext) {
         status: z.enum(['todo', 'in_progress', 'done']).optional().nullable(),
         dueDate: z.number().int().optional().nullable(),
         reminderOffsetMin: z.number().int().min(0).optional().nullable(),
+        recurrenceRule: z.enum(RECURRENCE_RULES).optional().nullable(),
       }),
       execute: async ({ nodeId, ...rest }) => {
         const node = await canvasService.updateNode(ctx.workspaceId, nodeId, ctx.userId, rest)

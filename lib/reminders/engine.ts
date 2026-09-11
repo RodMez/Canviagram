@@ -45,6 +45,23 @@ function formatDueDate(date: Date): string {
   })
 }
 
+// Recurrencia (F5.3): aritmética simple con Date nativo. Caso límite
+// conocido: monthly sobre fin de mes usa el comportamiento nativo de
+// setMonth (puede saltar al mes siguiente) — aceptado para el MVP.
+export function advanceDueDate(current: Date, rule: string): Date {
+  const next = new Date(current)
+  if (rule === 'daily') next.setDate(next.getDate() + 1)
+  else if (rule === 'weekly') next.setDate(next.getDate() + 7)
+  else next.setMonth(next.getMonth() + 1)
+  return next
+}
+
+const RECURRENCE_LABELS: Record<string, string> = {
+  daily: 'cada día',
+  weekly: 'cada semana',
+  monthly: 'cada mes',
+}
+
 export async function runReminderSweep(now = new Date()): Promise<{ reminded: number }> {
   const candidates = await db
     .select()
@@ -73,9 +90,23 @@ export async function runReminderSweep(now = new Date()): Promise<{ reminded: nu
       .returning()
     if (!claimed) continue
 
+    // Recurrencia (F5.3): solo se llega aquí tras ganar el re-claim atómico,
+    // así que no hay ventana de carrera nueva. El nodo vuelve a ser candidato
+    // en el siguiente sweep (notifiedAt vuelve a NULL).
+    if (claimed.recurrenceRule && claimed.dueDate) {
+      const nextDueDate = advanceDueDate(claimed.dueDate, claimed.recurrenceRule)
+      await db
+        .update(nodes)
+        .set({ dueDate: nextDueDate, notifiedAt: null })
+        .where(eq(nodes.id, claimed.id))
+        .run()
+    }
+
     const memberIds = await getWorkspaceRecipients(node.workspaceId)
     const title = '⏰ Recordatorio'
-    const body = `"${node.title}" vence ${formatDueDate(node.dueDate)}`
+    const body = claimed.recurrenceRule
+      ? `"${node.title}" vence ${formatDueDate(node.dueDate)} (↻ se repite ${RECURRENCE_LABELS[claimed.recurrenceRule] ?? claimed.recurrenceRule})`
+      : `"${node.title}" vence ${formatDueDate(node.dueDate)}`
 
     if (memberIds.length > 0) {
       await db

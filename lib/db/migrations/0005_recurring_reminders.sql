@@ -1,0 +1,1 @@
+ALTER TABLE `nodes` ADD `recurrence_rule` text;
