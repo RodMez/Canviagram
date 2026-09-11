@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { FolderKanban, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { createWorkspaceSchema } from '@/lib/validators/workspace'
 
 type WorkspaceListItem = {
@@ -14,12 +14,7 @@ type WorkspaceListItem = {
   createdAt: string
 }
 
-type WorkspacesClientProps = {
-  userName: string | null
-  userEmail: string | null
-}
-
-export function WorkspacesClient({ userName, userEmail }: WorkspacesClientProps) {
+export function WorkspacesClient() {
   const router = useRouter()
   const [workspaces, setWorkspaces] = useState<WorkspaceListItem[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -103,18 +98,6 @@ export function WorkspacesClient({ userName, userEmail }: WorkspacesClientProps)
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
-        <Link href="/workspaces" className="flex items-center gap-2 text-sm font-semibold">
-          <FolderKanban className="h-5 w-5 text-primary" />
-          <span>Canviagram</span>
-        </Link>
-        <div className="flex-1" />
-        <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-sm">
-          <span className="font-medium">{userName ?? 'Usuario'}</span>
-          {userEmail ? <span className="text-xs text-muted-foreground">{userEmail}</span> : null}
-        </div>
-      </header>
-
       <main className="mx-auto w-full max-w-2xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Tus workspaces</h1>
 

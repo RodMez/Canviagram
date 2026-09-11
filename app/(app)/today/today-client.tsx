@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { CalendarDays, Check, Flame, FolderKanban, RefreshCw } from 'lucide-react'
+import { Check, Flame, RefreshCw } from 'lucide-react'
 import type { TodayBucket, TodayItem } from '@/lib/today-service'
+import { useSetHeaderActions } from '@/components/layout/header-actions-context'
 
 // ============================================================
 // Vista Hoy / Enfoque (F5.4, visual Fase V — energía alta)
@@ -93,7 +94,7 @@ function todayLabel(): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-export function TodayClient({ userName, userEmail }: { userName: string | null; userEmail: string | null }) {
+export function TodayClient() {
   const router = useRouter()
   const [items, setItems] = useState<TodayClientItem[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -137,6 +138,25 @@ export function TodayClient({ userName, userEmail }: { userName: string | null; 
     return () => window.removeEventListener('focus', onFocus)
   }, [load])
 
+  // Acción contextual en el header global (el header vive en AppShell).
+  // Memoizada: el slot re-publica en cada cambio de identidad y sin esto
+  // entraría en bucle render → efecto → setState.
+  const headerActions = useMemo(
+    () => (
+      <button
+        onClick={load}
+        disabled={refreshing}
+        aria-label="Refrescar"
+        title="Refrescar"
+        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-muted disabled:opacity-50"
+      >
+        <RefreshCw className={`h-4 w-4 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
+      </button>
+    ),
+    [load, refreshing]
+  )
+  useSetHeaderActions(headerActions)
+
   async function markDone(item: TodayClientItem) {
     if (doneBusy) return
     setDoneBusy(item.nodeId)
@@ -166,31 +186,6 @@ export function TodayClient({ userName, userEmail }: { userName: string | null; 
 
   return (
     <div className="flex-1 overflow-y-auto bg-gradient-to-b from-secondary via-background to-background">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
-        <Link href="/today" className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
-          <CalendarDays className="h-5 w-5 text-primary" />
-          <span className="font-display text-lg font-semibold tracking-wide">HOY</span>
-        </Link>
-        <Link href="/workspaces" className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted">
-          <FolderKanban className="h-4 w-4" />
-          <span>Workspaces</span>
-        </Link>
-        <div className="flex-1" />
-        <button
-          onClick={load}
-          disabled={refreshing}
-          aria-label="Refrescar"
-          title="Refrescar"
-          className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
-        </button>
-        <div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-sm">
-          <span className="font-medium">{userName ?? 'Usuario'}</span>
-          {userEmail ? <span className="hidden text-xs text-muted-foreground sm:inline">{userEmail}</span> : null}
-        </div>
-      </header>
-
       <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
         {/* Hero del día */}
         <div className="flex items-end justify-between gap-4">

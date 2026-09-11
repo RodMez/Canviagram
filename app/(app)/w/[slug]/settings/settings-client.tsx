@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 
@@ -390,17 +391,15 @@ export default function SettingsClient({
   ]
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* Header */}
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
-        <a href={`/w/${workspace.slug}`} className="text-sm text-zinc-500 hover:text-foreground">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Sub-navegación de secciones (el header global vive en AppShell). */}
+      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-background px-4 py-2">
+        <Link href={`/w/${workspace.slug}`} className="text-sm text-zinc-500 hover:text-foreground">
           ← Volver al workspace
-        </a>
+        </Link>
         <div className="flex-1" />
         <h1 className="text-sm font-semibold">Configuración</h1>
-      </header>
-
-      {/* Tabs */}
+      </div>
       <nav className="flex shrink-0 gap-1 border-b border-border bg-background px-4 pt-2" aria-label="Secciones de configuración">
         {tabs.map((t) => (
           <button

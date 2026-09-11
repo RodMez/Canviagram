@@ -1,9 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 // ============================================================
@@ -79,17 +77,6 @@ export function AdminSettingsClient() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
-        <Link href="/today" className="flex items-center gap-2 text-sm font-semibold">
-          <Settings2 className="h-5 w-5 text-primary" />
-          <span>Administración</span>
-        </Link>
-        <div className="flex-1" />
-        <Link href="/today" className="rounded px-2 py-1 text-sm text-muted-foreground hover:bg-muted">
-          Hoy
-        </Link>
-      </header>
-
       <main className="mx-auto w-full max-w-2xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Modelo de IA</h1>
         <p className="mt-1 text-sm text-muted-foreground">

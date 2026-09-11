@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
-import { getUserProfile } from '@/lib/auth/user-profile'
 import { WorkspacesClient } from './workspaces-client'
 
 // CRÍTICO: depende de la cookie de sesión en server component → no estático.
@@ -12,12 +11,6 @@ export default async function WorkspacesPage() {
     redirect('/login?next=/workspaces')
   }
 
-  const profile = await getUserProfile(session.userId)
-
-  return (
-    <WorkspacesClient
-      userName={profile?.displayName ?? null}
-      userEmail={profile?.email ?? null}
-    />
-  )
+  // El perfil de usuario lo resuelve el layout global (AppShell) una sola vez.
+  return <WorkspacesClient />
 }
