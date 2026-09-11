@@ -1,16 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter, usePathname } from 'next/navigation'
 import {
   Plus,
   PanelRightClose,
   PanelRightOpen,
   ChevronDown,
-  LogOut,
   Settings,
-  FolderKanban,
   Shuffle,
 } from 'lucide-react'
 import { useCanvasStore } from '@/store/canvas-store'
@@ -35,13 +32,17 @@ export function mapWorkspacesForMenu(
 }
 
 // ============================================================
-// Toolbar (Diseño 8)
+// Toolbar: barra secundaria del workspace (bajo el AppHeader).
+//
+// El header global (logo, nav Hoy|Workspaces, usuario, logout)
+// vive en components/layout/AppHeader. Aquí solo queda lo
+// contextual del canvas: switcher de workspace, crear, reordenar,
+// colapsar panel, campana y acceso a configuración.
 // ============================================================
 
 type ToolbarProps = {
   workspaceName?: string
-  userName?: string | null
-  userEmail?: string | null
+  workspaceSlug?: string
   /** Abre CreateNodePopup en el centro del viewport (lo provee el padre). */
   onCreateNode?: () => void
   /** Reordena el grafo a una grilla limpia. */
@@ -50,18 +51,13 @@ type ToolbarProps = {
   workspaceId?: string
 }
 
-export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onReorder, workspaceId }: ToolbarProps) {
-  const router = useRouter()
-  const pathname = usePathname()
+export function Toolbar({ workspaceName, workspaceSlug, onCreateNode, onReorder, workspaceId }: ToolbarProps) {
   const isPanelCollapsed = useCanvasStore((s) => s.isPanelCollapsed)
   const togglePanel = useCanvasStore((s) => s.togglePanel)
 
   const [workspaces, setWorkspaces] = useState<WorkspaceMenuItem[]>([])
   const [wsMenuOpen, setWsMenuOpen] = useState(false)
-  const [avatarOpen, setAvatarOpen] = useState(false)
-
-  // Slug del workspace actual desde la ruta /w/[slug] (para el link de Configuración).
-  const currentSlug = pathname?.split('/')[2]
+  const wsMenuRef = useRef<HTMLDivElement>(null)
 
   // Carga la lista de workspaces del usuario para el dropdown.
   useEffect(() => {
@@ -77,38 +73,43 @@ export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onRe
     }
   }, [])
 
-  // Cerrar sesión: POST /api/auth/logout → redirect /login.
-  const handleLogout = useCallback(async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' })
-    } catch (err) {
-      console.error('[Toolbar] logout failed', err)
-    } finally {
-      router.push('/login')
+  // Cerrar el switcher en click fuera + Escape.
+  useEffect(() => {
+    if (!wsMenuOpen) return
+    const onPointerDown = (e: MouseEvent) => {
+      if (wsMenuRef.current && !wsMenuRef.current.contains(e.target as Node)) setWsMenuOpen(false)
     }
-  }, [router])
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setWsMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [wsMenuOpen])
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
-      {/* Logo → /today (F5.4: Hoy es el landing post-login) */}
-      <Link href="/today" className="flex cursor-pointer items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-sm">
-          <FolderKanban className="h-4 w-4 text-primary-foreground" />
-        </span>
-        <span className="font-display text-xl font-semibold tracking-wide">Canviagram</span>
-      </Link>
-
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
       {/* Workspace name ▾ dropdown */}
-      <div className="relative">
+      <div className="relative" ref={wsMenuRef}>
         <button
+          type="button"
           onClick={() => setWsMenuOpen((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={wsMenuOpen}
           className="flex items-center gap-1 rounded px-2 py-1 text-sm font-medium hover:bg-muted"
         >
           <span>{workspaceName ?? 'Workspace'}</span>
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
         {wsMenuOpen && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg border bg-popover p-1 shadow-lg">
+          <div
+            role="menu"
+            aria-label="Cambiar de workspace"
+            className="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg border bg-popover p-1 shadow-lg"
+          >
             {workspaces.length === 0 && (
               <p className="px-3 py-2 text-xs text-muted-foreground">Sin workspaces</p>
             )}
@@ -116,6 +117,7 @@ export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onRe
               <Link
                 key={w.id}
                 href={`/w/${w.slug}`}
+                role="menuitem"
                 onClick={() => setWsMenuOpen(false)}
                 className="block rounded px-3 py-2 text-sm hover:bg-muted"
               >
@@ -125,6 +127,18 @@ export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onRe
           </div>
         )}
       </div>
+
+      {/* Configuración del workspace actual */}
+      {workspaceSlug && (
+        <Link
+          href={`/w/${workspaceSlug}/settings`}
+          aria-label="Configuración del workspace"
+          title="Configuración del workspace"
+          className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+        >
+          <Settings className="h-4 w-4" />
+        </Link>
+      )}
 
       <div className="flex-1" />
 
@@ -166,44 +180,6 @@ export function Toolbar({ workspaceName, userName, userEmail, onCreateNode, onRe
 
       {/* Campana de notificaciones (Fase 3) */}
       {workspaceId ? <NotificationBell workspaceId={workspaceId} /> : null}
-
-      {/* Menú de usuario: avatar con identidad real + Configuración + Cerrar sesión */}
-      <div className="relative">
-        <button
-          onClick={() => setAvatarOpen((o) => !o)}
-          aria-label="Menú de usuario"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium hover:bg-muted/70"
-        >
-          {(userName ?? 'U').charAt(0).toUpperCase()}
-        </button>
-        {avatarOpen && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border bg-popover p-1 shadow-lg">
-            <div className="border-b border-border px-3 py-2">
-              <p className="truncate text-sm font-medium">{userName ?? 'Usuario'}</p>
-              {userEmail ? (
-                <p className="truncate text-xs text-muted-foreground">{userEmail}</p>
-              ) : null}
-            </div>
-            {currentSlug && (
-              <Link
-                href={`/w/${currentSlug}/settings`}
-                onClick={() => setAvatarOpen(false)}
-                className="mt-1 flex items-center gap-2 rounded px-3 py-2 text-sm hover:bg-muted"
-              >
-                <Settings className="h-4 w-4" />
-                Configuración
-              </Link>
-            )}
-            <button
-              onClick={handleLogout}
-              className="mt-1 flex w-full items-center gap-2 rounded border-t border-border px-3 py-2 text-sm text-destructive hover:bg-muted"
-            >
-              <LogOut className="h-4 w-4" />
-              Cerrar sesión
-            </button>
-          </div>
-        )}
-      </div>
-    </header>
+    </div>
   )
 }

@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
-import { getUserProfile } from '@/lib/auth/user-profile'
 import { resolveWorkspaceBySlug } from '@/lib/canvas/workspace-by-slug'
 import { ForbiddenError } from '@/lib/errors'
 import WorkspaceClient from './workspace-client'
@@ -20,11 +19,9 @@ export default async function WorkspacePage({
   }
 
   let workspace
-  let role
   try {
     const resolved = await resolveWorkspaceBySlug(slug, session.userId)
     workspace = resolved.workspace
-    role = resolved.role
   } catch (error) {
     if (error instanceof ForbiddenError) {
       redirect('/')
@@ -32,18 +29,14 @@ export default async function WorkspacePage({
     throw error
   }
 
-  // Perfil del usuario para el menú del Toolbar (avatar real, no el del workspace).
-  const profile = await getUserProfile(session.userId)
-
+  // El perfil de usuario lo resuelve el layout global (AppShell) una sola vez.
   // NUNCA fetchea nodos/edges aquí (decisión b — el client los carga).
   return (
     <WorkspaceClient
       workspaceId={workspace.id}
       workspaceName={workspace.name}
+      workspaceSlug={workspace.slug}
       userId={session.userId}
-      role={role}
-      userName={profile?.displayName ?? null}
-      userEmail={profile?.email ?? null}
     />
   )
 }

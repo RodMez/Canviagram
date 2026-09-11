@@ -18,19 +18,15 @@ export type CreateNodeRequest = { screenPos: { x: number; y: number } }
 type WorkspaceClientProps = {
   workspaceId: string
   workspaceName: string
+  workspaceSlug: string
   userId: string
-  role: string
-  userName: string | null
-  userEmail: string | null
 }
 
 export default function WorkspaceClient({
   workspaceId,
   workspaceName,
+  workspaceSlug,
   userId,
-  role,
-  userName,
-  userEmail,
 }: WorkspaceClientProps) {
   const loadGraph = useCanvasStore((s) => s.loadGraph)
   const [sseEnabled, setSseEnabled] = useState(false)
@@ -87,13 +83,12 @@ export default function WorkspaceClient({
 
   return (
     <div className="flex h-full flex-1 flex-col">
-      {/* Toolbar global del área autenticada, arriba del canvas. */}
+      {/* Barra secundaria del workspace (el header global vive en AppShell). */}
       <Toolbar
         workspaceName={workspaceName}
+        workspaceSlug={workspaceSlug}
         onCreateNode={handleCreateNode}
         onReorder={handleReorder}
-        userName={userName}
-        userEmail={userEmail}
         workspaceId={workspaceId}
       />
       <div className="flex flex-1 overflow-hidden">
