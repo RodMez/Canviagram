@@ -2,17 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Sistema de diseño Canviagram — Fase V (energía alta, bento)
+   Tokens en tripletas RGB para que los modificadores de
+   opacidad de Tailwind (bg-primary/80, border-border/50…)
+   funcionen vía <alpha-value>. Identidad light única.
+   Paleta: rosa vibrante #E11D48 + azul acción #2563EB.
+   ============================================================ */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  color-scheme: light;
+
+  --background: 255 241 242;
+  --foreground: 39 39 42;
+
+  --card: 255 255 255;
+  --card-foreground: 39 39 42;
+
+  --popover: 255 255 255;
+  --popover-foreground: 39 39 42;
+
+  --primary: 225 29 72;
+  --primary-foreground: 255 255 255;
+
+  --secondary: 255 228 230;
+  --secondary-foreground: 136 19 55;
+
+  --muted: 255 228 230;
+  --muted-foreground: 82 82 91;
+
+  --accent: 37 99 235;
+  --accent-foreground: 255 255 255;
+
+  --destructive: 220 38 38;
+  --destructive-foreground: 255 255 255;
+
+  --border: 254 205 211;
+  --input: 254 205 211;
+  --ring: 225 29 72;
+
+  --radius: 0.75rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
   }
 }
 
@@ -34,13 +67,13 @@
 }
 
 .react-flow__node:hover {
-  background-color: var(--muted);
+  background-color: rgb(var(--muted));
 }
 
 .react-flow__handle {
-  background-color: var(--border);
+  background-color: rgb(var(--border));
 }
 
 .react-flow__edge-path {
-  stroke: var(--muted-foreground);
+  stroke: rgb(var(--muted-foreground));
 }
