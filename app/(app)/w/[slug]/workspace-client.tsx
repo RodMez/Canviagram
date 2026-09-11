@@ -87,7 +87,7 @@ export default function WorkspaceClient({
 
   return (
     <div className="flex h-full flex-1 flex-col">
-      {/* Toolbar (F3.4d): global del área autenticada, arriba del canvas (PLAN.md §6). */}
+      {/* Toolbar global del área autenticada, arriba del canvas. */}
       <Toolbar
         workspaceName={workspaceName}
         onCreateNode={handleCreateNode}

@@ -19,9 +19,6 @@ coverage
 .vscode
 __tests__
 README.md
-PLAN.md
-claude-code-prompt.md
-Modelo_de_Datos.png
 .DS_Store
 Dockerfile
 .dockerignore
