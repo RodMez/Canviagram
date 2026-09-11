@@ -35,16 +35,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# SQLite
+# Env — blanket (excepto ejemplo público) + SQLite
+.env*
+!.env.example
 *.db
 *.db-wal
 *.db-shm
 *.sqlite
-# Env
-.env.local
-.env
-.env.production
-.env*.production
 
 # Archivos personales en la raíz
 /Hoja de vida Yennis Marcelaa.docx
