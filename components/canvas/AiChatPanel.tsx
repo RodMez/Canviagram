@@ -75,13 +75,17 @@ export function demoToolResultToEvent(
 // vive en `output` con `state: 'output-available'`; el error en
 // `errorText` con `state: 'output-error'`. El formato v5
 // (`tool-invocation` / `state: 'result'`) NO existe en v7. El demo
-// usa 6 tools estáticos (buildDemoTools) → isStaticToolUIPart; los
+// usa 7 tools estáticos (buildDemoTools) → isStaticToolUIPart; los
 // dynamic-tool no aplican aquí.
 //
 // `appliedToolCalls` es el Set de dedupe por toolCallId del turno:
 // el snapshot del mensaje se re-emite en cada chunk del stream, así
 // que el mismo tool-result llega varias veces; solo se aplica la
 // primera. Pura y testable sin DOM.
+//
+// `layoutGraph` (F5.2) es multi-evento: su output trae TODOS los nodos
+// con posiciones nuevas y se despacha un node:updated por nodo (el
+// reducer fusiona por id, solo cambian positionX/Y en la práctica).
 // ============================================================
 export function applyToolResultToCanvas(
   parts: UIMessage['parts'],
@@ -93,8 +97,31 @@ export function applyToolResultToCanvas(
     if (part.state !== 'output-available') continue
     if (appliedToolCalls.has(part.toolCallId)) continue
     appliedToolCalls.add(part.toolCallId)
-    const event = demoToolResultToEvent(getStaticToolName(part), part.output)
+    const toolName = getStaticToolName(part)
+    if (toolName === 'layoutGraph') {
+      dispatchLayoutGraphResult(part.output, dispatch)
+      continue
+    }
+    const event = demoToolResultToEvent(toolName, part.output)
     if (event) dispatch(event)
+  }
+}
+
+function dispatchLayoutGraphResult(output: unknown, dispatch: (event: ApplyEventPayload) => void): void {
+  let parsed: unknown = output
+  if (typeof output === 'string') {
+    try {
+      parsed = JSON.parse(output)
+    } catch {
+      return
+    }
+  }
+  const nodes = (parsed as { nodes?: unknown })?.nodes
+  if (!Array.isArray(nodes)) return
+  for (const node of nodes) {
+    if (node && typeof node === 'object' && 'id' in node) {
+      dispatch({ event: 'node:updated', data: node })
+    }
   }
 }
 

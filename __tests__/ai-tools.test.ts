@@ -7,6 +7,7 @@ vi.mock('@/lib/canvas-service', () => ({
   createEdge: vi.fn(),
   deleteEdge: vi.fn(),
   getWorkspaceGraph: vi.fn(),
+  relayoutWorkspace: vi.fn(),
 }))
 
 import * as canvasService from '@/lib/canvas-service'
@@ -76,6 +77,13 @@ describe('AI tools', () => {
     expect(result).toHaveProperty('summary', '2 nodos, 1 conexiones')
     expect((result as any).nodes).toHaveLength(2)
     expect((result as any).edges).toHaveLength(1)
+  })
+
+  it('layoutGraph llama relayoutWorkspace y retorna repositioned', async () => {
+    cs.relayoutWorkspace.mockResolvedValue({ repositioned: 5 } as any)
+    const result = await buildTools(ctx).layoutGraph.execute!({}, opts)
+    expect(cs.relayoutWorkspace).toHaveBeenCalledWith('ws-1', 'user-1')
+    expect(result).toEqual({ repositioned: 5 })
   })
 
   it('createNode propaga errores de canvas-service sin catch', async () => {

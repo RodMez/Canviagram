@@ -169,6 +169,23 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
     expect(result.nodes).toHaveLength(7)
     expect(result.edges).toHaveLength(5)
   })
+
+  it('layoutGraph reordena el grafo en memoria y devuelve nodos con posición', async () => {
+    const graph = cloneGraph(getDemoFixtures())
+    const tools = buildDemoTools({ graph })
+    const opts = { toolCallId: 'call-1', messages: [], context: {} }
+
+    const result = (await tools.layoutGraph.execute!({}, opts)) as {
+      repositioned: number
+      nodes: Array<{ id: string; positionX: number; positionY: number }>
+    }
+    expect(result.repositioned).toBe(7)
+    expect(result.nodes).toHaveLength(7)
+    // Jerarquía dagre: task-1 arriba de task-2 (depends_on)
+    const t1 = result.nodes.find((n) => n.id === 'demo-task-1')!
+    const t2 = result.nodes.find((n) => n.id === 'demo-task-2')!
+    expect(t2.positionY).toBeGreaterThan(t1.positionY)
+  })
 })
 
 describe('demoToolResultToEvent — mapa tool-result → evento local (F4.1 §2.2)', () => {
@@ -278,6 +295,56 @@ describe('applyToolResultToCanvas — tool-result v7 → evento local (H1)', () 
         state: 'output-error',
         input: {},
         errorText: 'boom',
+      },
+    ] as unknown as UIMessage['parts']
+
+    applyToolResultToCanvas(parts, dispatch, applied)
+
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('traduce layoutGraph output → un node:updated por nodo', () => {
+    const dispatch = vi.fn()
+    const applied = new Set<string>()
+    const parts = [
+      {
+        type: 'tool-layoutGraph',
+        toolCallId: 'call-9',
+        state: 'output-available',
+        input: {},
+        output: {
+          repositioned: 2,
+          nodes: [
+            { id: 'n-1', positionX: 0, positionY: 0 },
+            { id: 'n-2', positionX: 0, positionY: 200 },
+          ],
+        },
+      },
+    ] as unknown as UIMessage['parts']
+
+    applyToolResultToCanvas(parts, dispatch, applied)
+
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    expect(dispatch).toHaveBeenCalledWith({
+      event: 'node:updated',
+      data: { id: 'n-1', positionX: 0, positionY: 0 },
+    })
+    expect(dispatch).toHaveBeenCalledWith({
+      event: 'node:updated',
+      data: { id: 'n-2', positionX: 0, positionY: 200 },
+    })
+  })
+
+  it('layoutGraph sin nodos no despacha nada (defensivo)', () => {
+    const dispatch = vi.fn()
+    const applied = new Set<string>()
+    const parts = [
+      {
+        type: 'tool-layoutGraph',
+        toolCallId: 'call-10',
+        state: 'output-available',
+        input: {},
+        output: { repositioned: 0 },
       },
     ] as unknown as UIMessage['parts']
 

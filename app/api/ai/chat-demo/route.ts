@@ -101,6 +101,7 @@ ${edgeSummary || '(ninguna)'}
   parent_of y encadena tareas en secuencia con depends_on.
 - Todo nodo lleva una descripción útil en content (qué hay que hacer y por qué).
 - Al crear nodos, asigna posiciones razonables respecto a la estructura existente, sin solapar.
+- Tras crear o conectar 2+ nodos en la misma respuesta, llama a layoutGraph para que el canvas quede ordenado.
 - Valida tipos (task, note, idea, person, resource) y solo "task" puede tener status.
 - Si hay errores de validación, informa y sugiere correcciones.
 - Responde en español unless the user writes in English.`

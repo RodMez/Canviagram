@@ -102,6 +102,19 @@ export function buildTools(ctx: ToolContext) {
         }
       },
     }),
+
+    layoutGraph: tool({
+      description:
+        'Reorganiza automáticamente TODOS los nodos del workspace en un layout jerárquico ' +
+        'según sus conexiones (depends_on, parent_of quedan arriba→abajo). Úsala después de ' +
+        'crear o conectar varios nodos, o cuando el usuario pida "organiza esto"/"ordena el canvas". ' +
+        'No requiere parámetros. Afecta a TODOS los nodos del workspace, no solo a los que acabas de tocar.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const result = await canvasService.relayoutWorkspace(ctx.workspaceId, ctx.userId)
+        return { repositioned: result.repositioned }
+      },
+    }),
   }
 }
 

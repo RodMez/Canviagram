@@ -1,6 +1,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { NODE_TYPES } from '@/lib/db/schema'
+import { computeDagreLayout } from '@/lib/canvas/dagre-layout'
 import type { DemoGraph } from '@/lib/demo/graph-ops'
 import {
   createNode,
@@ -92,6 +93,35 @@ export function buildDemoTools(ctx: { graph: DemoGraph }) {
           edges: graph.edges.map(serializeEdge),
           summary: `${graph.nodes.length} nodos, ${graph.edges.length} conexiones`,
         }
+      },
+    }),
+
+    // Réplica demo de layoutGraph (F5.2): misma intención que producción pero
+    // sobre el DemoGraph en memoria (sin DB): recalcula posiciones con dagre,
+    // las aplica al grafo y devuelve los nodos serializados para que el
+    // cliente los refleje como un node:updated por nodo (ver AiChatPanel).
+    layoutGraph: tool({
+      description:
+        'Reorganiza automáticamente TODOS los nodos del workspace en un layout jerárquico ' +
+        'según sus conexiones (depends_on, parent_of quedan arriba→abajo). Úsala después de ' +
+        'crear o conectar varios nodos, o cuando el usuario pida "organiza esto"/"ordena el canvas". ' +
+        'No requiere parámetros. Afecta a TODOS los nodos del workspace, no solo a los que acabas de tocar.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const positions = computeDagreLayout(
+          ctx.graph.nodes.map((n) => n.id),
+          ctx.graph.edges.map((e) => ({ sourceId: e.sourceId, targetId: e.targetId }))
+        )
+        let repositioned = 0
+        for (const node of ctx.graph.nodes) {
+          const pos = positions.get(node.id)
+          if (pos) {
+            node.positionX = pos.x
+            node.positionY = pos.y
+            repositioned++
+          }
+        }
+        return { repositioned, nodes: ctx.graph.nodes.map(serializeNode) }
       },
     }),
   }

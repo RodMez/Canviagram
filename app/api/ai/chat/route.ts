@@ -42,6 +42,7 @@ ${edgeSummary || '(ninguna)'}
   Antes de crear conexiones, usa queryGraph para confirmar los IDs reales.
 - Todo nodo (en especial task) lleva una descripción útil en content: qué hay que hacer y por qué.
 - La posición de los nodos la asigna el servidor; no la decidas ni la menciones.
+- Tras crear o conectar 2+ nodos en la misma respuesta, llama a layoutGraph para que el canvas quede ordenado.
 - Valida tipos de nodo y estado antes de crear (solo "task" puede tener status).
 - Si hay errores de validación, informa al usuario y sugiere correcciones.
 - Responde en español unless the user writes in English.`
