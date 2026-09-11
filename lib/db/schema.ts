@@ -37,6 +37,11 @@ export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number]
 export const INVITATION_ROLES = ['admin', 'member', 'viewer'] as const
 export type InvitationRole = (typeof INVITATION_ROLES)[number]
 
+// Rol a nivel plataforma (F5.5): ortogonal a WORKSPACE_ROLES (por workspace).
+// Solo protege la pantalla de configuración de la instancia.
+export const USER_ROLES = ['user', 'admin'] as const
+export type UserRole = (typeof USER_ROLES)[number]
+
 // ============================================================
 // AUTH
 // ============================================================
@@ -48,6 +53,7 @@ export const users = sqliteTable(
     email: text('email').notNull(),
     passwordHash: text('password_hash').notNull(),
     displayName: text('display_name').notNull(),
+    role: text('role', { enum: USER_ROLES }).notNull().default('user'),
     avatarUrl: text('avatar_url'),
     emailVerified: integer('email_verified', { mode: 'boolean' })
       .notNull()
@@ -437,6 +443,25 @@ export const webPushSubscriptions = sqliteTable(
 )
 
 // ============================================================
+// CONFIGURACIÓN DE LA INSTANCIA (F5.5)
+// ============================================================
+
+/**
+ * Ajustes globales en DB (fila única id='default'): modelo de IA activo
+ * + fallbacks. Cambiarlos no requiere redeploy (vs .env).
+ * aiModelFallback se guarda como JSON.stringify(string[]).
+ */
+export const appSettings = sqliteTable('app_settings', {
+  id: text('id').primaryKey(),
+  aiModel: text('ai_model').notNull(),
+  aiModelFallback: text('ai_model_fallback').notNull().default('[]'),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`)
+    .$onUpdate(() => new Date()),
+})
+
+// ============================================================
 // RELACIONES DRIZZLE
 // ============================================================
 
@@ -594,3 +619,6 @@ export type NewNotification = typeof notifications.$inferInsert
 
 export type WebPushSubscription = typeof webPushSubscriptions.$inferSelect
 export type NewWebPushSubscription = typeof webPushSubscriptions.$inferInsert
+
+export type AppSettings = typeof appSettings.$inferSelect
+export type NewAppSettings = typeof appSettings.$inferInsert

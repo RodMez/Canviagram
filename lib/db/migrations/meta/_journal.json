@@ -43,6 +43,13 @@
       "when": 1789103253777,
       "tag": "0005_recurring_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789104530729,
+      "tag": "0006_admin_and_ai_settings",
+      "breakpoints": true
     }
   ]
 }
