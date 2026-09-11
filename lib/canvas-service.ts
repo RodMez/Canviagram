@@ -8,6 +8,7 @@ import { publish } from '@/lib/sse/pubsub'
 import { assertWorkspaceAccess, assertCanWrite } from '@/lib/auth/workspace-access'
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '@/lib/errors'
 import { positionForIndex, occupiedIndex, findFreeSlots } from '@/lib/canvas/layout'
+import { computeDagreLayout } from '@/lib/canvas/dagre-layout'
 
 // Re-export errors for compatibility with routes importing from canvas-service
 export { ValidationError, NotFoundError, ForbiddenError, ConflictError }
@@ -481,11 +482,11 @@ export async function getWorkspaceGraph(workspaceId: string, userId: string) {
 // ============================================================
 
 /**
- * Reordena todo el grafo activo del workspace a una grilla limpia.
- * Capas por profundidad (longest-path sobre parent_of/depends_on en dirección
- * source→target), así proyectos y dependencias quedan adyacentes; los nodos
- * sin conexiones van tras los conectados (ordenados por createdAt).
- * Publica node:updated por nodo para sincronizar todos los clientes SSE.
+ * Reordena todo el grafo activo del workspace con un layout jerárquico
+ * (dagre, F5.2): los edges dirigidos (depends_on / parent_of) definen el
+ * rank, así lo relacionado queda agrupado y las dependencias fluyen de
+ * arriba hacia abajo. Publica node:updated por nodo para sincronizar
+ * todos los clientes SSE.
  */
 export async function relayoutWorkspace(workspaceId: string, userId: string) {
   await assertCanWrite(workspaceId, userId)
@@ -501,37 +502,20 @@ export async function relayoutWorkspace(workspaceId: string, userId: string) {
     return { repositioned: 0 }
   }
 
-  // Longest-path layering: rank[target] = max(rank[target], rank[source] + 1)
-  const rank = new Map<string, number>()
-  for (const n of allNodes) rank.set(n.id, 0)
-  for (let i = 0; i < allNodes.length; i++) {
-    let changed = false
-    for (const e of allEdges) {
-      const sourceRank = rank.get(e.sourceId)
-      const targetRank = rank.get(e.targetId)
-      if (sourceRank !== undefined && targetRank !== undefined && targetRank < sourceRank + 1) {
-        rank.set(e.targetId, sourceRank + 1)
-        changed = true
-      }
-    }
-    if (!changed) break
-  }
-
-  const sorted = [...allNodes].sort((a, b) => {
-    const rankDiff = (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0)
-    if (rankDiff !== 0) return rankDiff
-    return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
-  })
+  const positions = computeDagreLayout(
+    allNodes.map((n) => n.id),
+    allEdges.map((e) => ({ sourceId: e.sourceId, targetId: e.targetId }))
+  )
 
   const now = new Date()
   db.transaction((tx) => {
-    sorted.forEach((node, i) => {
-      const pos = positionForIndex(i)
+    for (const node of allNodes) {
+      const pos = positions.get(node.id)!
       tx.update(nodes)
         .set({ positionX: pos.x, positionY: pos.y, updatedAt: now } as never)
         .where(and(eq(nodes.id, node.id), eq(nodes.workspaceId, workspaceId)))
         .run()
-    })
+    }
   })
 
   const updated = await db

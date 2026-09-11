@@ -355,6 +355,40 @@ describe('canvas-service', () => {
     expect(updated.title).toBe('Tarea actualizada')
   })
 
+  it('relayoutWorkspace - cadena con depends_on queda ordenada arriba→abajo (dagre)', async () => {
+    const a = await canvasService.createNode(testWorkspaceId, testUserId, {
+      type: 'task',
+      title: 'A',
+    })
+    const b = await canvasService.createNode(testWorkspaceId, testUserId, {
+      type: 'task',
+      title: 'B',
+    })
+    const c = await canvasService.createNode(testWorkspaceId, testUserId, {
+      type: 'task',
+      title: 'C',
+    })
+    await canvasService.createEdge(testWorkspaceId, testUserId, {
+      sourceId: a.id,
+      targetId: b.id,
+      type: 'depends_on',
+    })
+    await canvasService.createEdge(testWorkspaceId, testUserId, {
+      sourceId: b.id,
+      targetId: c.id,
+      type: 'depends_on',
+    })
+
+    const result = await canvasService.relayoutWorkspace(testWorkspaceId, testUserId)
+    expect(result.repositioned).toBe(3)
+
+    const byId = new Map(
+      (await canvasService.listNodes(testWorkspaceId, testUserId)).map((n) => [n.id, n])
+    )
+    expect(byId.get(b.id)!.positionY).toBeGreaterThan(byId.get(a.id)!.positionY)
+    expect(byId.get(c.id)!.positionY).toBeGreaterThan(byId.get(b.id)!.positionY)
+  })
+
   it('trim fix - título con solo espacios debe fallar validación', async () => {
     await expect(
       canvasService.createNode(testWorkspaceId, testUserId, {
