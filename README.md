@@ -72,3 +72,13 @@ curl -X POST https://xxxx.ngrok-free.app/api/telegram/webhook \
 ```
 
 Flujo completo: genera un código en Ajustes → Telegram (endpoint `POST /api/workspaces/:id/telegram/link`), envíalo al bot con `/link <código>` y luego manda un mensaje normal para crear nodos con IA.
+
+## Administración (F5.5)
+
+El modelo de IA se configura en runtime desde `/admin/settings` (sin redeploy), con
+fallbacks automáticos y aviso por Telegram al operador. Solo `users.role = 'admin'`
+puede verla; no hay UI para promover usuarios. El primer admin se asigna a mano:
+
+```sql
+UPDATE users SET role = 'admin' WHERE email = 'TU_EMAIL_AQUI';
+```

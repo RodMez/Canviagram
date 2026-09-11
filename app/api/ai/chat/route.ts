@@ -5,7 +5,7 @@ import { streamText, isStepCount, toUIMessageStream, createUIMessageStreamRespon
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
-import { isAIEnabled, getLLM } from '@/lib/ai/provider'
+import { isAIEnabled, callWithFallback } from '@/lib/ai/provider'
 import { buildTools } from '@/lib/ai/tools'
 import { getWorkspaceGraph } from '@/lib/canvas-service'
 import { handleApiError } from '@/lib/api-helpers'
@@ -88,13 +88,16 @@ export async function POST(request: Request) {
 
     // stopWhen: isStepCount(10) limita iteraciones tool-use.
     // Nota: el diseño usa `maxSteps: 10` (API v4); en SDK v7 se usa `stopWhen: isStepCount(10)`.
-    const result = streamText({
-      model: getLLM(),
-      system: buildSystemPrompt(graph),
-      messages,
-      tools,
-      stopWhen: isStepCount(10),
-    })
+    // F5.5: el modelo se resuelve con fallback (el primario se reintenta en cada request).
+    const result = await callWithFallback((model) =>
+      streamText({
+        model,
+        system: buildSystemPrompt(graph),
+        messages,
+        tools,
+        stopWhen: isStepCount(10),
+      })
+    )
 
     // M2 (Diseño 10.3): UIMessageStream transporta texto + tool parts (crea nodos/edges).
     // toTextStreamResponse() está deprecado en ai v7 y solo emite texto.

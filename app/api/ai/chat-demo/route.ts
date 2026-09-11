@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { streamText, isStepCount, toUIMessageStream, createUIMessageStreamResponse } from 'ai'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { isAIEnabled, getLLM } from '@/lib/ai/provider'
+import { isAIEnabled, callWithFallback } from '@/lib/ai/provider'
 import { buildDemoTools } from '@/lib/ai/tools-demo'
 import { cloneGraph, type DemoGraph } from '@/lib/demo/graph-ops'
 import { DEMO_WORKSPACE_ID, DEMO_CREATED_AT } from '@/lib/demo/fixtures'
@@ -171,13 +171,15 @@ export async function POST(request: Request) {
 
   const tools = buildDemoTools({ graph })
 
-  const result = streamText({
-    model: getLLM(),
-    system: buildDemoSystemPrompt(graph),
-    messages: parsed.data.messages,
-    tools,
-    stopWhen: isStepCount(10),
-  })
+  const result = await callWithFallback((model) =>
+    streamText({
+      model,
+      system: buildDemoSystemPrompt(graph),
+      messages: parsed.data.messages,
+      tools,
+      stopWhen: isStepCount(10),
+    })
+  )
 
   return createUIMessageStreamResponse({
     stream: toUIMessageStream({ stream: result.stream }),

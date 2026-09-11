@@ -10,7 +10,11 @@ vi.mock('ai', async (importOriginal) => {
     createUIMessageStreamResponse: vi.fn(() => new Response('stream-ok')),
   }
 })
-vi.mock('@/lib/ai/provider', () => ({ isAIEnabled: vi.fn(), getLLM: vi.fn() }))
+vi.mock('@/lib/ai/provider', () => ({
+  isAIEnabled: vi.fn(),
+  getLLM: vi.fn(),
+  callWithFallback: vi.fn(async (fn: (model: unknown) => unknown) => fn({})),
+}))
 
 import { POST } from '@/app/api/ai/chat-demo/route'
 import { isAIEnabled, getLLM } from '@/lib/ai/provider'

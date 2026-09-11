@@ -12,10 +12,12 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/w/') ||
     pathname.startsWith('/workspaces') ||
     pathname.startsWith('/today') ||
+    pathname.startsWith('/admin') ||
     pathname.startsWith('/settings') ||
     pathname.startsWith('/api/workspaces/') ||
     pathname.startsWith('/api/ai/') ||
-    pathname.startsWith('/api/today')
+    pathname.startsWith('/api/today') ||
+    pathname.startsWith('/api/admin')
   if (!isProtected) return NextResponse.next()
   const isAuthenticated = request.cookies.has('__Host-session')
   if (!isAuthenticated) {
@@ -28,5 +30,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/w/:path*', '/workspaces/:path*', '/today/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*', '/api/today'],
+  matcher: ['/w/:path*', '/workspaces/:path*', '/today/:path*', '/admin/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*', '/api/today', '/api/admin/:path*'],
 }

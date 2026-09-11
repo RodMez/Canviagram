@@ -8,7 +8,11 @@ vi.mock('ai', () => ({
 }))
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }))
 vi.mock('@/lib/auth/workspace-access', () => ({ assertWorkspaceAccess: vi.fn() }))
-vi.mock('@/lib/ai/provider', () => ({ isAIEnabled: vi.fn(), getLLM: vi.fn() }))
+vi.mock('@/lib/ai/provider', () => ({
+  isAIEnabled: vi.fn(),
+  getLLM: vi.fn(),
+  callWithFallback: vi.fn(async (fn: (model: unknown) => unknown) => fn({})),
+}))
 vi.mock('@/lib/ai/tools', () => ({ buildTools: vi.fn(() => ({})) }))
 vi.mock('@/lib/canvas-service', () => ({ getWorkspaceGraph: vi.fn() }))
 

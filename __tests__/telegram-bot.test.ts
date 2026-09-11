@@ -16,6 +16,7 @@ vi.mock('@/lib/telegram/chats', () => ({
 vi.mock('@/lib/ai/provider', () => ({
   isAIEnabled: vi.fn(),
   getLLM: vi.fn(),
+  callWithFallback: vi.fn(async (fn: (model: unknown) => unknown) => fn({})),
 }))
 vi.mock('@/lib/canvas-service', () => ({
   getWorkspaceGraph: vi.fn(),
@@ -44,7 +45,7 @@ vi.mock('@/lib/ai/tools', () => ({
 import { parseCommand, handleLink, handleUnlink, handleMessage, handleList, handleUse, handleStatus, escapeHtml, createTelegramBot } from '@/lib/telegram/bot'
 import { createLinkCode, _clear as clearLinkStore } from '@/lib/telegram/link-store'
 import { findBinding, upsertBinding, deleteBinding, setActiveWorkspace, resetActiveWorkspace, touchLastActivity } from '@/lib/telegram/chats'
-import { isAIEnabled, getLLM } from '@/lib/ai/provider'
+import { isAIEnabled, getLLM, callWithFallback } from '@/lib/ai/provider'
 import { getWorkspaceGraph } from '@/lib/canvas-service'
 import { generateText } from 'ai'
 import { buildTelegramChatKey, listChatMessages, appendAndTrimChatMessages, clearChatMessages } from '@/lib/chat/repository'
@@ -57,6 +58,7 @@ const mSetActiveWorkspace = vi.mocked(setActiveWorkspace)
 const mResetActiveWorkspace = vi.mocked(resetActiveWorkspace)
 const mIsAIEnabled = vi.mocked(isAIEnabled)
 const mGetLLM = vi.mocked(getLLM)
+const mCallWithFallback = vi.mocked(callWithFallback)
 const mGetWorkspaceGraph = vi.mocked(getWorkspaceGraph)
 const mGenerateText = vi.mocked(generateText)
 const mBuildTelegramChatKey = vi.mocked(buildTelegramChatKey)
@@ -289,12 +291,13 @@ describe('lib/telegram/bot', () => {
   })
 
   describe('handleMessage', () => {
-    it('sin binding → reply instrucciones y getLLM NO llamado', async () => {
+    it('sin binding → reply instrucciones y LLM NO llamado', async () => {
       mFindBinding.mockResolvedValue(null)
       const ctx = makeCtxStub()
       await handleMessage(ctx, 'crea un nodo')
       expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('no está vinculado'), { parse_mode: 'HTML' })
       expect(mGetLLM).not.toHaveBeenCalled()
+      expect(mCallWithFallback).not.toHaveBeenCalled()
     })
 
     it('isAIEnabled=false → reply IA deshabilitada y LLM no llamado', async () => {
@@ -311,6 +314,7 @@ describe('lib/telegram/bot', () => {
       await handleMessage(ctx, 'crea un nodo')
       expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('IA está deshabilitada'), { parse_mode: 'HTML' })
       expect(mGetLLM).not.toHaveBeenCalled()
+      expect(mCallWithFallback).not.toHaveBeenCalled()
     })
 
     it('binding + texto del asistente → reply (escapado), tools de paridad y memoria persistida', async () => {
@@ -329,7 +333,9 @@ describe('lib/telegram/bot', () => {
       const ctx = makeCtxStub()
       await handleMessage(ctx, 'crea una tarea')
 
-      expect(mGetLLM).toHaveBeenCalled()
+      // F5.5: el modelo se resuelve vía callWithFallback (getLLM directo ya no se usa aquí).
+      expect(mCallWithFallback).toHaveBeenCalled()
+      expect(mGetLLM).not.toHaveBeenCalled()
       // Paridad con el chat web: mismas tools + stopWhen limitando iteraciones
       expect(mGenerateText).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -13,7 +13,7 @@ import {
   resetActiveWorkspace,
   touchLastActivity,
 } from '@/lib/telegram/chats'
-import { isAIEnabled, getLLM } from '@/lib/ai/provider'
+import { isAIEnabled, callWithFallback } from '@/lib/ai/provider'
 import { getWorkspaceGraph } from '@/lib/canvas-service'
 import { listWorkspacesForUser } from '@/lib/canvas/workspace-by-slug'
 import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
@@ -391,13 +391,15 @@ export async function handleMessage(ctx: TelegramReplyCtx, text: string): Promis
   // Paridad con el chat web: el LLM actúa sobre el canvas real con las MISMAS
   // tools (createNode/updateNode/deleteNode/createEdge/deleteEdge/queryGraph).
   // stopWhen limita las iteraciones tool-use (isStepCount(4) ajustado al bot).
-  const { text: raw } = await generateText({
-    model: getLLM(),
-    system: buildTelegramSystemPrompt(workspaceName, graph, memory),
-    prompt: text.slice(0, CHAT_MESSAGE_MAX_CONTENT),
-    tools: buildTools({ workspaceId: wsId, userId: binding.userId }),
-    stopWhen: isStepCount(4),
-  })
+  const { text: raw } = await callWithFallback((model) =>
+    generateText({
+      model,
+      system: buildTelegramSystemPrompt(workspaceName, graph, memory),
+      prompt: text.slice(0, CHAT_MESSAGE_MAX_CONTENT),
+      tools: buildTools({ workspaceId: wsId, userId: binding.userId }),
+      stopWhen: isStepCount(4),
+    })
+  )
 
   const assistantText = raw.trim()
   if (!assistantText) {
