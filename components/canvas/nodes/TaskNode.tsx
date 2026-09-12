@@ -7,8 +7,7 @@ import type { NodeStatus } from '@/lib/db/schema'
 import { NODE_STATUSES } from '@/lib/db/schema'
 import { NodeShell } from './NodeShell'
 import { cn } from '@/lib/utils'
-import { useCanvasStore } from '@/store/canvas-store'
-import { isDemoWorkspace } from '@/lib/demo/fixtures'
+import { patchTaskStatus } from '@/lib/canvas/task-status'
 
 const STATUS_STYLES: Record<NodeStatus, string> = {
   todo: 'bg-muted text-muted-foreground',
@@ -20,20 +19,10 @@ export function TaskNode({ data }: NodeProps<CanvasRFNode>) {
   const { domain, workspaceId } = data
   const [editing, setEditing] = useState(false)
   const status = domain.status ?? 'todo'
-  const applyLocalEvent = useCanvasStore((s) => s.applyLocalEvent)
 
   const patchStatus = (next: NodeStatus) => {
     setEditing(false)
-    // Demo (F4.1): cambio de status local, cero PATCH.
-    if (isDemoWorkspace(workspaceId)) {
-      applyLocalEvent({ event: 'node:updated', data: { ...domain, status: next } })
-      return
-    }
-    fetch(`/api/workspaces/${workspaceId}/nodes/${domain.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: next }),
-    }).catch((err) => console.error('[TaskNode] status patch failed', err))
+    patchTaskStatus(workspaceId, domain, next)
   }
 
   const badge = editing ? (

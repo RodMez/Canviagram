@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { NODE_TYPES, type NodeType, type Node as DbNode } from '@/lib/db/schema'
+import { NODE_TYPES, type NodeType, type NodeStatus, type Node as DbNode } from '@/lib/db/schema'
 import { useCanvasStore } from '@/store/canvas-store'
 import { isDemoWorkspace, demoId } from '@/lib/demo/fixtures'
 
@@ -12,15 +12,20 @@ type CreateNodePopupProps = {
   flowPos: { x: number; y: number }
   workspaceId: string
   onClose: () => void
+  /** Tipo pre-seleccionado (ej. el "+" de una columna del Tablero pasa 'task'). */
+  initialType?: NodeType
+  /** Status pre-seleccionado (el "+" de una columna pasa el status de esa columna). */
+  initialStatus?: NodeStatus
 }
 
 // Popup crear nodo (Diseño 12.4): título + descripción + tipo → POST /nodes.
 // La respuesta la refleja SSE (node:created); el popup NO duplica el insert.
 // Modo demo (F4.1): publish local vía applyLocalEvent, cero fetch.
-export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose }: CreateNodePopupProps) {
+export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose, initialType = 'task', initialStatus = 'todo' }: CreateNodePopupProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [type, setType] = useState<NodeType>('task')
+  const [type, setType] = useState<NodeType>(initialType)
+  const [status, setStatus] = useState<NodeStatus>(initialStatus ?? 'todo')
   const [busy, setBusy] = useState(false)
   const creatingRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -51,7 +56,7 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose }: Cr
           type,
           title: trimmed,
           content: description.trim() || null,
-          status: type === 'task' ? 'todo' : null,
+          status: type === 'task' ? status : null,
           dueDate: null,
           reminderOffsetMin: null,
           notifiedAt: null,
@@ -75,7 +80,7 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose }: Cr
           content: description.trim() || null,
           positionX: flowPos.x,
           positionY: flowPos.y,
-          ...(type === 'task' ? { status: 'todo' } : {}),
+          ...(type === 'task' ? { status } : {}),
         }),
       })
       if (!res.ok) throw new Error('Error al crear nodo')

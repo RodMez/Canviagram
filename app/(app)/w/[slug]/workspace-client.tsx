@@ -5,6 +5,7 @@ import { useCanvasStore } from '@/store/canvas-store'
 import { useSse } from '@/hooks/useSse'
 import { filterOrphanEdges } from '@/lib/canvas/rf'
 import Canvas from '@/components/canvas/Canvas'
+import { Board } from '@/components/board/Board'
 import { RightPanel } from '@/components/canvas/RightPanel'
 import { Toolbar } from '@/components/canvas/Toolbar'
 import type { SseStatus } from '@/components/canvas/AiChatPanel'
@@ -32,6 +33,9 @@ export default function WorkspaceClient({
   const [sseEnabled, setSseEnabled] = useState(false)
   const [sseStatus, setSseStatus] = useState<SseStatus>('connecting')
   const [createNodeRequest, setCreateNodeRequest] = useState<CreateNodeRequest | null>(null)
+  // Vista del workspace (F6.1): Tablero es la predeterminada; Canvas queda a un clic.
+  // No se persiste entre sesiones en v1 (decisión F6.1 #11).
+  const [view, setView] = useState<'board' | 'canvas'>('board')
 
   // Botón + del Toolbar → abre CreateNodePopup en el centro del viewport.
   const handleCreateNode = useCallback(() => {
@@ -90,14 +94,20 @@ export default function WorkspaceClient({
         onCreateNode={handleCreateNode}
         onReorder={handleReorder}
         workspaceId={workspaceId}
+        view={view}
+        onChangeView={setView}
       />
       <div className="flex flex-1 overflow-hidden">
-        <Canvas
-          workspaceId={workspaceId}
-          userId={userId}
-          createNodeRequest={createNodeRequest}
-          onConsumeCreateNodeRequest={() => setCreateNodeRequest(null)}
-        />
+        {view === 'board' ? (
+          <Board workspaceId={workspaceId} onSwitchToCanvas={() => setView('canvas')} />
+        ) : (
+          <Canvas
+            workspaceId={workspaceId}
+            userId={userId}
+            createNodeRequest={createNodeRequest}
+            onConsumeCreateNodeRequest={() => setCreateNodeRequest(null)}
+          />
+        )}
         <RightPanel workspaceId={workspaceId} userId={userId} sseStatus={sseStatus} />
       </div>
     </div>
