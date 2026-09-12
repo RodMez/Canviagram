@@ -25,6 +25,9 @@ export type NodeType = (typeof NODE_TYPES)[number]
 export const NODE_STATUSES = ['todo', 'in_progress', 'done'] as const
 export type NodeStatus = (typeof NODE_STATUSES)[number]
 
+export const NODE_PRIORITIES = ['urgent', 'high', 'medium', 'low'] as const
+export type NodePriority = (typeof NODE_PRIORITIES)[number]
+
 export const RECURRENCE_RULES = ['daily', 'weekly', 'monthly'] as const
 export type RecurrenceRule = (typeof RECURRENCE_RULES)[number]
 
@@ -224,6 +227,37 @@ export const invitations = sqliteTable(
 // CANVAS
 // ============================================================
 
+// Columnas del tablero Kanban (F0): modificables y añadibles a voluntad.
+// - Sin UNIQUE a nivel DB en (workspaceId, title): SQLite es case-sensitive
+//   por defecto y el requisito es unicidad NOCASE → se valida manual en
+//   board-service con `COLLATE NOCASE` y se mapea a 409 (ConflictError).
+// - position con gaps (*1000) para reordenar sin reescribir todo.
+export const boardColumns = sqliteTable(
+  'board_columns',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    position: real('position').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`)
+      .$onUpdate(() => new Date()),
+  },
+  (t) => ({
+    workspaceIdx: index('idx_board_columns_workspace').on(t.workspaceId),
+    workspacePositionIdx: index('idx_board_columns_workspace_position').on(
+      t.workspaceId,
+      t.position
+    ),
+  })
+)
+
 export const nodes = sqliteTable(
   'nodes',
   {
@@ -238,6 +272,17 @@ export const nodes = sqliteTable(
     title: text('title').notNull(),
     content: text('content'),
     status: text('status', { enum: NODE_STATUSES }),
+    // Tablero enriquecido (F0): prioridad + esfuerzo solo tienen sentido en tasks
+    // (validado en servicio/validadores, no por default DB). Null = sin valor.
+    priority: text('priority', { enum: NODE_PRIORITIES }),
+    effort: integer('effort'),
+    assigneeId: text('assignee_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    boardColumnId: text('board_column_id').references(() => boardColumns.id, {
+      onDelete: 'set null',
+    }),
+    boardOrder: real('board_order').notNull().default(0),
     positionX: real('position_x').notNull().default(0.0),
     positionY: real('position_y').notNull().default(0.0),
     dueDate: integer('due_date', { mode: 'timestamp' }),
@@ -261,6 +306,13 @@ export const nodes = sqliteTable(
     ),
     createdByIdx: index('idx_nodes_created_by').on(t.createdBy),
     deletedAtIdx: index('idx_nodes_deleted_at').on(t.deletedAt),
+    boardColumnIdx: index('idx_nodes_board_column').on(t.boardColumnId),
+    workspaceBoardIdx: index('idx_nodes_workspace_board').on(
+      t.workspaceId,
+      t.boardColumnId,
+      t.boardOrder
+    ),
+    assigneeIdx: index('idx_nodes_assignee').on(t.assigneeId),
   })
 )
 
@@ -479,6 +531,7 @@ export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   invitations: many(invitations),
   nodes: many(nodes),
   edges: many(edges),
+  boardColumns: many(boardColumns),
   telegramChats: many(telegramChats),
   chatMessages: many(chatMessages),
 }))
@@ -506,8 +559,24 @@ export const nodesRelations = relations(nodes, ({ one, many }) => ({
     fields: [nodes.createdBy],
     references: [users.id],
   }),
+  assignee: one(users, {
+    fields: [nodes.assigneeId],
+    references: [users.id],
+  }),
+  boardColumn: one(boardColumns, {
+    fields: [nodes.boardColumnId],
+    references: [boardColumns.id],
+  }),
   outgoingEdges: many(edges, { relationName: 'source' }),
   incomingEdges: many(edges, { relationName: 'target' }),
+}))
+
+export const boardColumnsRelations = relations(boardColumns, ({ one, many }) => ({
+  workspace: one(workspaces, {
+    fields: [boardColumns.workspaceId],
+    references: [workspaces.id],
+  }),
+  nodes: many(nodes),
 }))
 
 export const edgesRelations = relations(edges, ({ one }) => ({
@@ -604,6 +673,9 @@ export type NewInvitation = typeof invitations.$inferInsert
 
 export type Node = typeof nodes.$inferSelect
 export type NewNode = typeof nodes.$inferInsert
+
+export type BoardColumn = typeof boardColumns.$inferSelect
+export type NewBoardColumn = typeof boardColumns.$inferInsert
 
 export type Edge = typeof edges.$inferSelect
 export type NewEdge = typeof edges.$inferInsert

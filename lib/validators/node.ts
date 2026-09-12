@@ -1,5 +1,61 @@
 import { z } from 'zod'
-import { NODE_TYPES, NODE_STATUSES, RECURRENCE_RULES } from '@/lib/db/schema'
+import { NODE_TYPES, NODE_STATUSES, NODE_PRIORITIES, RECURRENCE_RULES } from '@/lib/db/schema'
+
+const prioritySchema = z
+  .enum(NODE_PRIORITIES, { message: 'Prioridad no válida' })
+  .optional()
+  .nullable()
+
+const effortSchema = z
+  .number()
+  .int('El esfuerzo debe ser un entero')
+  .min(0, 'El esfuerzo no puede ser negativo')
+  .max(100, 'El esfuerzo no puede exceder 100')
+  .optional()
+  .nullable()
+
+const assigneeIdSchema = z
+  .string()
+  .trim()
+  .min(1, 'El responsable no es válido')
+  .max(100, 'El responsable no es válido')
+  .optional()
+  .nullable()
+
+const boardColumnIdSchema = z
+  .string()
+  .trim()
+  .min(1, 'La columna no es válida')
+  .max(100, 'La columna no es válida')
+  .optional()
+  .nullable()
+
+function assertTaskOnly(
+  data: {
+    type?: string
+    status?: string | null
+    priority?: string | null
+    effort?: number | null
+    assigneeId?: string | null
+    boardColumnId?: string | null
+  },
+  ctx: z.RefinementCtx
+) {
+  // Solo tasks pueden portar estos campos. En create, type siempre presente;
+  // en update parcial, si type viene se valida contra él y el servicio
+  // re-valida contra el tipo efectivo (existente) para cross-checks.
+  if (data.type && data.type !== 'task') {
+    for (const field of ['status', 'priority', 'effort', 'assigneeId', 'boardColumnId'] as const) {
+      if (data[field] !== undefined && data[field] !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: 'Solo los nodos de tipo task pueden tener este campo',
+        })
+      }
+    }
+  }
+}
 
 export const createNodeSchema = z
   .object({
@@ -44,6 +100,10 @@ export const createNodeSchema = z
       })
       .optional()
       .nullable(),
+    priority: prioritySchema,
+    effort: effortSchema,
+    assigneeId: assigneeIdSchema,
+    boardColumnId: boardColumnIdSchema,
   })
   .superRefine((data, ctx) => {
     if (data.status && data.type !== 'task') {
@@ -53,6 +113,7 @@ export const createNodeSchema = z
         message: 'Solo los nodos de tipo task pueden tener estado',
       })
     }
+    assertTaskOnly(data, ctx)
     if (data.recurrenceRule && !data.dueDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -107,6 +168,10 @@ export const updateNodeSchema = z
       })
       .optional()
       .nullable(),
+    priority: prioritySchema,
+    effort: effortSchema,
+    assigneeId: assigneeIdSchema,
+    boardColumnId: boardColumnIdSchema,
   })
   .superRefine((data, ctx) => {
     if (data.status && data.type && data.type !== 'task') {
@@ -116,6 +181,7 @@ export const updateNodeSchema = z
         message: 'Solo los nodos de tipo task pueden tener estado',
       })
     }
+    assertTaskOnly(data, ctx)
     if (data.recurrenceRule && !data.dueDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

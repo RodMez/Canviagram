@@ -32,6 +32,16 @@ export class ConflictError extends Error {
   }
 }
 
+export class UnprocessableError extends Error {
+  statusCode = 422
+  details?: unknown
+  constructor(message: string, details?: unknown) {
+    super(message)
+    this.name = 'UnprocessableError'
+    this.details = details
+  }
+}
+
 export class GoneError extends Error {
   statusCode = 410
   constructor(message: string) {
