@@ -44,14 +44,44 @@
 }
 
 @layer base {
+  html {
+    touch-action: manipulation;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
+    overscroll-behavior-y: contain;
+  }
+
+  input,
+  select,
+  textarea,
+  button,
+  a {
+    touch-action: manipulation;
   }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-bottom-nav {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 4rem);
+  }
+
+  .touch-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
   }
 }
 

@@ -77,7 +77,7 @@ export function AdminSettingsClient() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <main className="mx-auto w-full max-w-2xl px-6 py-10">
+      <main className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Modelo de IA</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Solo administradores. El cambio aplica en ~1 minuto como máximo, sin redeploy.
@@ -102,7 +102,7 @@ export function AdminSettingsClient() {
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="openrouter/free"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring"
+                className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none focus-visible:border-ring sm:text-sm"
               />
               <p className="text-xs text-zinc-500">Se intenta primero en cada request (ej. el free hasta agotar cuota).</p>
             </div>
@@ -117,14 +117,14 @@ export function AdminSettingsClient() {
                 onChange={(e) => setFallbackText(e.target.value)}
                 rows={4}
                 placeholder={'anthropic/claude-sonnet-4\nopenai/gpt-4o-mini'}
-                className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus-visible:border-ring"
+                className="min-h-11 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-base outline-none focus-visible:border-ring sm:text-sm"
               />
               <p className="text-xs text-zinc-500">
                 Si el activo falla (modelo dado de baja o rate-limit), se usa el primero disponible. Te avisa por Telegram.
               </p>
             </div>
 
-            <Button type="submit" disabled={saving || model.trim().length === 0}>
+            <Button type="submit" disabled={saving || model.trim().length === 0} className="h-11 w-full sm:w-auto">
               {saving ? 'Guardando...' : 'Guardar'}
             </Button>
           </form>

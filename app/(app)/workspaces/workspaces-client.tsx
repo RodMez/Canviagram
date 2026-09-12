@@ -98,7 +98,7 @@ export function WorkspacesClient() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <main className="mx-auto w-full max-w-2xl px-6 py-10">
+      <main className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Tus workspaces</h1>
 
         <section className="mt-6 rounded-lg border bg-card p-4">
@@ -119,7 +119,7 @@ export function WorkspacesClient() {
                 onChange={(e) => handleNameChange(e.target.value)}
                 disabled={isCreating}
                 aria-invalid={Boolean(fieldErrors.name)}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
+                className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-50 sm:text-sm"
                 placeholder="Mi proyecto"
               />
               {fieldErrors.name?.[0] ? (
@@ -136,7 +136,7 @@ export function WorkspacesClient() {
                 onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 50))}
                 disabled={isCreating}
                 aria-invalid={Boolean(fieldErrors.slug)}
-                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
+                className="h-11 w-full rounded-lg border border-border bg-background px-3 font-mono text-base outline-none transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-50 sm:text-sm"
                 placeholder="mi-proyecto"
               />
               {fieldErrors.slug?.[0] ? (
@@ -146,7 +146,7 @@ export function WorkspacesClient() {
             <button
               type="submit"
               disabled={isCreating}
-              className="flex items-center gap-2 rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              className="flex h-11 min-w-28 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
               {isCreating ? 'Creando...' : 'Crear workspace'}
@@ -167,7 +167,7 @@ export function WorkspacesClient() {
               <li key={w.id}>
                 <Link
                   href={`/w/${w.slug}`}
-                  className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 hover:bg-muted/50"
+                  className="flex min-h-14 items-center justify-between rounded-lg border bg-card px-4 py-3 transition-colors hover:bg-muted/50 active:bg-muted/70"
                 >
                   <span className="font-medium">{w.name}</span>
                   <span className="text-xs text-muted-foreground">

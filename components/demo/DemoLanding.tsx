@@ -42,19 +42,19 @@ export default function DemoLanding() {
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-secondary via-background to-background">
       {/* Header propio de landing */}
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
-        <Link href="/" className="flex cursor-pointer items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-sm">
+      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background/80 px-4 py-2 backdrop-blur safe-top sm:h-14 sm:flex-nowrap sm:gap-3 sm:py-0">
+        <Link href="/" className="flex min-h-11 cursor-pointer items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-sm">
             <FolderKanban className="h-4 w-4 text-primary-foreground" />
           </span>
           <span className="font-display text-xl font-semibold tracking-wide">Canviagram</span>
         </Link>
-        <div className="flex-1" />
+        <div className="hidden flex-1 sm:block" />
         {/* Base UI no soporta asChild (Radix); render={<Link/>} es el equivalente. */}
-        <Button variant="ghost" render={<Link href="/login" />}>
+        <Button variant="ghost" className="h-11" render={<Link href="/login" />}>
           Iniciar sesión
         </Button>
-        <Button render={<Link href="/register" />}>Crear cuenta</Button>
+        <Button className="h-11" render={<Link href="/register" />}>Crear cuenta</Button>
       </header>
 
       {/* Hero */}
@@ -62,19 +62,19 @@ export default function DemoLanding() {
         <p className="text-xs font-bold uppercase tracking-[0.25em] text-primary">
           Canvas visual + IA
         </p>
-        <h1 className="mx-auto mt-3 max-w-2xl text-balance font-display text-5xl font-semibold leading-[0.95] tracking-tight sm:text-7xl">
+        <h1 className="mx-auto mt-3 max-w-2xl text-balance font-display text-4xl font-semibold leading-[0.95] tracking-tight sm:text-7xl">
           Mira en qué estás <span className="text-primary">trabajando</span>
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-balance text-base text-muted-foreground sm:text-lg">
           Planea tus proyectos en nodos conectados, deja que la IA los ordene
           y despierta cada día sabiendo exactamente qué toca.
         </p>
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-          <Button size="lg" render={<Link href="/register" />}>
+        <div className="mt-6 flex flex-col flex-wrap items-center justify-center gap-3 sm:flex-row">
+          <Button size="lg" className="h-12 w-full sm:w-auto" render={<Link href="/register" />}>
             Crear cuenta gratis
             <ArrowRight className="h-4 w-4" />
           </Button>
-          <Button size="lg" variant="outline" render={<a href="#demo" />}>
+          <Button size="lg" variant="outline" className="h-12 w-full sm:w-auto" render={<a href="#demo" />}>
             Probar la demo
           </Button>
         </div>
@@ -100,7 +100,7 @@ export default function DemoLanding() {
               Demo interactiva — crea nodos, conéctalos, pregúntale a la IA. Nada se guarda.
             </span>
           </div>
-          <div className="flex h-[60vh] min-h-[420px] overflow-hidden">
+          <div className="flex h-[62dvh] min-h-[420px] overflow-hidden">
             <Canvas workspaceId="demo" userId="demo" />
             <RightPanel workspaceId="demo" userId="demo" />
           </div>
@@ -120,7 +120,7 @@ export default function DemoLanding() {
           <Button
             size="lg"
             variant="outline"
-            className="mt-6 border-primary-foreground/40 bg-primary-foreground text-primary hover:bg-primary-foreground/90 hover:text-primary"
+            className="mt-6 h-12 w-full border-primary-foreground/40 bg-primary-foreground text-primary hover:bg-primary-foreground/90 hover:text-primary sm:w-auto"
             render={<Link href="/register" />}
           >
             Crear cuenta gratis

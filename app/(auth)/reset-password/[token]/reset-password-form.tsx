@@ -78,7 +78,8 @@ export default function ResetPasswordForm({ initialToken }: { initialToken: stri
             onChange={(e) => setPassword(e.target.value)}
             disabled={isSubmitting}
             aria-invalid={Boolean(fieldErrors.password)}
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
+            autoComplete="new-password"
+            className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-50 sm:text-sm"
             placeholder="Mínimo 8 caracteres"
           />
           {fieldErrors.password?.[0] ? (
@@ -97,7 +98,8 @@ export default function ResetPasswordForm({ initialToken }: { initialToken: stri
             onChange={(e) => setConfirm(e.target.value)}
             disabled={isSubmitting}
             aria-invalid={Boolean(fieldErrors.confirm)}
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
+            autoComplete="new-password"
+            className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-50 sm:text-sm"
             placeholder="Repite la contraseña"
           />
           {fieldErrors.confirm?.[0] ? (
@@ -105,7 +107,7 @@ export default function ResetPasswordForm({ initialToken }: { initialToken: stri
           ) : null}
         </div>
 
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+        <Button type="submit" disabled={isSubmitting} className="h-11 w-full cursor-pointer text-base sm:text-sm">
           {isSubmitting ? "Actualizando..." : "Actualizar contraseña"}
         </Button>
       </form>

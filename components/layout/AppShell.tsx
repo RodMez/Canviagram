@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { HeaderActionsProvider } from './header-actions-context'
 import { AppHeader } from './AppHeader'
+import { MobileNav } from './MobileNav'
 
 // ============================================================
 // AppShell: layout client del área autenticada.
@@ -24,7 +25,8 @@ export function AppShell({ userName, userEmail, isAdmin, children }: AppShellPro
     <HeaderActionsProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <AppHeader userName={userName} userEmail={userEmail} isAdmin={isAdmin} />
-        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col safe-bottom-nav sm:pb-0">{children}</div>
+        <MobileNav />
       </div>
     </HeaderActionsProvider>
   )

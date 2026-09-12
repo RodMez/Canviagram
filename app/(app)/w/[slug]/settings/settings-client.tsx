@@ -400,13 +400,16 @@ export default function SettingsClient({
         <div className="flex-1" />
         <h1 className="text-sm font-semibold">Configuración</h1>
       </div>
-      <nav className="flex shrink-0 gap-1 border-b border-border bg-background px-4 pt-2" aria-label="Secciones de configuración">
+      <nav
+        className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-background px-4 pt-2"
+        aria-label="Secciones de configuración"
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`rounded-t-lg border-b-2 px-3 py-2 text-sm transition-colors ${
+            className={`min-h-11 shrink-0 rounded-t-lg border-b-2 px-3 py-2 text-sm transition-colors ${
               tab === t.id
                 ? 'border-primary font-medium text-foreground'
                 : 'border-transparent text-zinc-500 hover:text-foreground'
@@ -440,7 +443,7 @@ export default function SettingsClient({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   disabled={!canAdmin}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring disabled:opacity-60"
+                  className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none focus-visible:border-ring disabled:opacity-60 sm:text-sm"
                 />
               </div>
 
@@ -454,7 +457,7 @@ export default function SettingsClient({
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
                   disabled={!canAdmin}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring disabled:opacity-60"
+                  className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none focus-visible:border-ring disabled:opacity-60 sm:text-sm"
                 />
                 <p className="text-xs text-zinc-500">Identificador único de la URL del workspace.</p>
               </div>
@@ -471,7 +474,7 @@ export default function SettingsClient({
                   rows={3}
                   maxLength={5000}
                   placeholder="¿De qué trata este proyecto?"
-                  className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring disabled:opacity-60"
+                  className="min-h-11 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-base outline-none focus-visible:border-ring disabled:opacity-60 sm:text-sm"
                 />
                 <p className="text-xs text-zinc-500">Qué es este proyecto y en qué punto está. Vacía para quitarla.</p>
               </div>
@@ -492,7 +495,7 @@ export default function SettingsClient({
               ) : null}
 
               {canAdmin ? (
-                <Button onClick={saveGeneral} disabled={saving}>
+                <Button onClick={saveGeneral} disabled={saving} className="h-11">
                   {saving ? 'Guardando...' : 'Guardar cambios'}
                 </Button>
               ) : null}
@@ -527,8 +530,8 @@ export default function SettingsClient({
               ) : null}
 
               {/* Tabla de miembros */}
-              <div className="overflow-hidden rounded-lg border border-border">
-                <table className="w-full text-sm">
+               <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full min-w-[560px] text-sm">
                   <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-zinc-500">
                     <tr>
                       <th className="px-3 py-2 font-medium">Usuario</th>
@@ -553,7 +556,7 @@ export default function SettingsClient({
                             <select
                               value={m.role}
                               onChange={(e) => changeRole(m, e.target.value)}
-                              className="rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-ring"
+                              className="h-11 rounded-lg border border-border bg-background px-2 text-base outline-none focus-visible:border-ring sm:text-sm"
                             >
                               {INVITE_ROLES.map((r) => (
                                 <option key={r} value={r}>
@@ -573,6 +576,7 @@ export default function SettingsClient({
                                 variant="destructive"
                                 size="sm"
                                 onClick={() => revoke(m)}
+                                className="h-11"
                               >
                                 Revocar
                               </Button>
@@ -624,12 +628,12 @@ export default function SettingsClient({
                       placeholder="email@ejemplo.com"
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
-                      className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring"
+                      className="h-11 flex-1 rounded-lg border border-border bg-background px-3 text-base outline-none focus-visible:border-ring sm:text-sm"
                     />
                     <select
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value)}
-                      className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring"
+                      className="h-11 rounded-lg border border-border bg-background px-3 text-base outline-none focus-visible:border-ring sm:text-sm"
                     >
                       {INVITE_ROLES.map((r) => (
                         <option key={r} value={r}>
@@ -637,7 +641,7 @@ export default function SettingsClient({
                         </option>
                       ))}
                     </select>
-                    <Button type="submit" disabled={inviting}>
+                    <Button type="submit" disabled={inviting} className="h-11">
                       {inviting ? 'Enviando...' : 'Invitar'}
                     </Button>
                   </div>
@@ -745,7 +749,7 @@ export default function SettingsClient({
 
                     {telegramStatus.canAdmin ? (
                       <div className="flex items-center gap-2">
-                        <Button variant="outline" onClick={testTelegramBot} disabled={telegramBusy}>
+                        <Button variant="outline" onClick={testTelegramBot} disabled={telegramBusy} className="h-11">
                           {telegramBusy ? 'Probando…' : 'Probar bot'}
                         </Button>
                         <span className="text-xs text-zinc-500">
@@ -770,12 +774,12 @@ export default function SettingsClient({
                     <p className="text-xs text-zinc-500">
                       El código expira el {formatDate(telegramLink.expiresAt)} ({telegramLink.ttlSeconds}s).
                     </p>
-                    <Button variant="outline" onClick={unlinkTelegram} disabled={telegramBusy}>
+                    <Button variant="outline" onClick={unlinkTelegram} disabled={telegramBusy} className="h-11">
                       Desvincular
                     </Button>
                   </div>
                 ) : (
-                  <Button onClick={generateTelegramCode} disabled={telegramBusy}>
+                  <Button onClick={generateTelegramCode} disabled={telegramBusy} className="h-11">
                     {telegramBusy ? 'Generando...' : 'Generar código'}
                   </Button>
                 )
@@ -821,6 +825,7 @@ export default function SettingsClient({
                 variant="destructive"
                 onClick={deleteWorkspace}
                 disabled={deleting || confirmSlug !== workspace.slug}
+                className="h-11 w-full sm:w-auto"
               >
                 {deleting ? 'Eliminando...' : 'Eliminar workspace'}
               </Button>

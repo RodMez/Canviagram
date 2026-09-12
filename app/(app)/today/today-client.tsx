@@ -148,7 +148,7 @@ export function TodayClient() {
         disabled={refreshing}
         aria-label="Refrescar"
         title="Refrescar"
-        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-muted disabled:opacity-50"
+        className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-muted active:bg-muted/80 disabled:opacity-50"
       >
         <RefreshCw className={`h-4 w-4 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
       </button>
@@ -186,12 +186,12 @@ export function TodayClient() {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gradient-to-b from-secondary via-background to-background">
-      <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
+      <main className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-8">
         {/* Hero del día */}
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">{todayLabel()}</p>
-            <h1 className="mt-1 font-display text-5xl font-semibold leading-none tracking-tight sm:text-6xl">
+            <h1 className="mt-1 font-display text-4xl font-semibold leading-none tracking-tight sm:text-6xl">
               {items === null ? '…' : total === 0 ? 'Día libre' : `${urgent}`}
               <span className="ml-2 align-middle font-sans text-lg font-medium text-muted-foreground">
                 {items === null ? '' : total === 0 ? 'nada pendiente' : urgent === 1 ? 'cosa hoy' : 'cosas hoy'}
@@ -256,7 +256,7 @@ export function TodayClient() {
                     {list.map((item) => (
                       <li
                         key={item.nodeId}
-                        className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 shadow-sm transition-all motion-safe:hover:scale-[1.01] hover:shadow"
+                        className="flex min-h-16 items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 shadow-sm transition-all motion-safe:hover:scale-[1.01] hover:shadow"
                       >
                         {item.status === 'todo' || item.status === 'in_progress' ? (
                           <button

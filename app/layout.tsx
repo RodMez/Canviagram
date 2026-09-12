@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Barlow_Condensed, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -19,6 +19,13 @@ export const metadata: Metadata = {
   title: "Canviagram — Mira en qué estás trabajando",
   description:
     "Canvas visual de planificación con IA: planea tus proyectos en nodos conectados y ejecuta tu día desde la vista Hoy.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#E11D48",
 };
 
 export default function RootLayout({

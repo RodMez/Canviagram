@@ -70,7 +70,7 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
     }
   }
 
-  const fieldCls = 'mt-1 w-full rounded border bg-background px-3 py-2 text-sm'
+  const fieldCls = 'mt-1 w-full min-h-11 rounded-lg border border-border bg-background px-3 py-2 text-base outline-none focus:ring-2 focus:ring-ring sm:text-sm'
 
   function toLocalInputValue(ts: number | null): string {
     if (ts == null) return ''
@@ -228,7 +228,7 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
           {save.status === 'saving' && <span className="text-xs text-muted-foreground">Guardando…</span>}
           <button
             onClick={handleDelete}
-            className="ml-auto rounded bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground"
+            className="ml-auto h-10 rounded-lg bg-destructive px-4 text-xs font-medium text-destructive-foreground active:opacity-80"
           >
             Eliminar
           </button>

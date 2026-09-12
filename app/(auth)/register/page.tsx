@@ -93,7 +93,8 @@ export default function RegisterPage() {
             onChange={(e) => setForm({ ...form, displayName: e.target.value })}
             disabled={isSubmitting}
             aria-invalid={Boolean(fieldErrors.displayName)}
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
+            autoComplete="name"
+            className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-50 sm:text-sm"
             placeholder="Tu nombre"
           />
           {fieldErrors.displayName?.[0] ? (
@@ -112,7 +113,9 @@ export default function RegisterPage() {
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             disabled={isSubmitting}
             aria-invalid={Boolean(fieldErrors.email)}
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
+            autoComplete="email"
+            inputMode="email"
+            className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-50 sm:text-sm"
             placeholder="tu@email.com"
           />
           {fieldErrors.email?.[0] ? (
@@ -131,7 +134,8 @@ export default function RegisterPage() {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             disabled={isSubmitting}
             aria-invalid={Boolean(fieldErrors.password)}
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
+            autoComplete="new-password"
+            className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-50 sm:text-sm"
             placeholder="Mínimo 8 caracteres"
           />
           {fieldErrors.password?.[0] ? (
@@ -139,7 +143,7 @@ export default function RegisterPage() {
           ) : null}
         </div>
 
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+        <Button type="submit" disabled={isSubmitting} className="h-11 w-full cursor-pointer text-base sm:text-sm">
           {isSubmitting ? "Creando..." : "Crear cuenta"}
         </Button>
       </form>

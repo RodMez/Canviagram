@@ -86,7 +86,9 @@ export default function ForgotPasswordPage() {
             onChange={(e) => setEmail(e.target.value)}
             disabled={isSubmitting}
             aria-invalid={Boolean(fieldErrors.email)}
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
+            autoComplete="email"
+            inputMode="email"
+            className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-50 sm:text-sm"
             placeholder="tu@email.com"
           />
           {fieldErrors.email?.[0] ? (
@@ -94,7 +96,7 @@ export default function ForgotPasswordPage() {
           ) : null}
         </div>
 
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+        <Button type="submit" disabled={isSubmitting} className="h-11 w-full cursor-pointer text-base sm:text-sm">
           {isSubmitting ? "Enviando..." : "Enviar enlace de recuperación"}
         </Button>
       </form>

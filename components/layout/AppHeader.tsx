@@ -80,7 +80,7 @@ function UserMenu({
         aria-label="Menú de usuario"
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium hover:bg-muted/70"
+        className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-sm font-medium transition-colors hover:bg-muted/70 active:bg-muted/80"
       >
         {initial}
       </button>
@@ -151,17 +151,22 @@ export function AppHeader({ userName, userEmail, isAdmin }: AppHeaderProps) {
     pathname?.startsWith('/invite') === true
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur">
+    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur safe-top">
       {/* Logo → /today (landing post-login) */}
-      <Link href="/today" className="flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-sm">
+      <Link href="/today" className="flex min-h-11 min-w-0 items-center gap-2 rounded-md pr-1">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary shadow-sm">
           <FolderKanban className="h-4 w-4 text-primary-foreground" />
         </span>
-        <span className="font-display text-xl font-semibold tracking-wide">Canviagram</span>
+        <span className="hidden font-display text-xl font-semibold tracking-wide min-[390px]:inline">
+          Canviagram
+        </span>
       </Link>
 
-      {/* Navegación principal persistente */}
-      <nav aria-label="Navegación principal" className="ml-2 flex items-center gap-1">
+      {/* Navegación principal persistente (desktop; en móvil vive en MobileNav) */}
+      <nav
+        aria-label="Navegación principal"
+        className="ml-2 hidden items-center gap-1 sm:flex"
+      >
         <Link
           href="/today"
           aria-current={isToday ? 'page' : undefined}
@@ -180,10 +185,9 @@ export function AppHeader({ userName, userEmail, isAdmin }: AppHeaderProps) {
         </Link>
       </nav>
 
-      <div className="flex-1" />
-
-      {/* Acciones contextuales de la página (slot) */}
-      {actions}
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1 overflow-hidden">
+        {actions}
+      </div>
 
       <UserMenu userName={userName} userEmail={userEmail} isAdmin={isAdmin} />
     </header>
