@@ -16,12 +16,14 @@ type CreateNodePopupProps = {
   initialType?: NodeType
   /** Status pre-seleccionado (el "+" de una columna pasa el status de esa columna). */
   initialStatus?: NodeStatus
+  /** Columna del tablero donde nace la tarea (solo type='task'; F2). */
+  boardColumnId?: string | null
 }
 
 // Popup crear nodo (Diseño 12.4): título + descripción + tipo → POST /nodes.
 // La respuesta la refleja SSE (node:created); el popup NO duplica el insert.
 // Modo demo (F4.1): publish local vía applyLocalEvent, cero fetch.
-export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose, initialType = 'task', initialStatus = 'todo' }: CreateNodePopupProps) {
+export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose, initialType = 'task', initialStatus = 'todo', boardColumnId = null }: CreateNodePopupProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [type, setType] = useState<NodeType>(initialType)
@@ -57,6 +59,11 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose, init
           title: trimmed,
           content: description.trim() || null,
           status: type === 'task' ? status : null,
+          priority: null,
+          effort: null,
+          assigneeId: null,
+          boardColumnId: type === 'task' ? boardColumnId : null,
+          boardOrder: 0,
           dueDate: null,
           reminderOffsetMin: null,
           notifiedAt: null,
@@ -80,7 +87,7 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose, init
           content: description.trim() || null,
           positionX: flowPos.x,
           positionY: flowPos.y,
-          ...(type === 'task' ? { status } : {}),
+          ...(type === 'task' ? { status, boardColumnId } : {}),
         }),
       })
       if (!res.ok) throw new Error('Error al crear nodo')
