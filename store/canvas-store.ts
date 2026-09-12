@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Node, Edge } from '@/lib/db/schema'
 import type { SSEEventName, ApplyEventPayload } from '@/lib/sse/types'
-import { applyCanvasEvent } from '@/lib/canvas/reducer'
+import { applyCanvasEvent, normalizeNodeDates, normalizeEdgeDates } from '@/lib/canvas/reducer'
 
 // ============================================================
 // State shape
@@ -67,7 +67,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
 
-  loadGraph: (nodes, edges) => set({ nodes, edges }),
+  // Frontera fetch->store: normaliza strings ISO a Date (ver reducer).
+  loadGraph: (nodes, edges) =>
+    set({
+      nodes: nodes.map((n) => normalizeNodeDates(n)),
+      edges: edges.map((e) => normalizeEdgeDates(e)),
+    }),
 
   applyEvent: (payload) => {
     const state = get()

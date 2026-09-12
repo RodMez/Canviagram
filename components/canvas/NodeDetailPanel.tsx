@@ -8,6 +8,27 @@ import { isDemoWorkspace } from '@/lib/demo/fixtures'
 
 type NodeDetailPanelProps = { workspaceId: string; userId: string }
 
+// Convierte dueDate (Date real, string ISO por JSON, epoch ms o null) a epoch ms.
+// Nunca lanza: string inválido / tipo inesperado -> null.
+// Cubre fetch inicial, eventos SSE y fixtures demo (el type Drizzle dice Date|null
+// pero por NextResponse.json / SSE llega string ISO al cliente).
+export function getDueDateMs(value: unknown): number | null {
+  if (value == null) return null
+  if (value instanceof Date) {
+    const ms = value.getTime()
+    return Number.isNaN(ms) ? null : ms
+  }
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? null : value
+  }
+  if (typeof value === 'string') {
+    if (value.trim() === '') return null
+    const ms = new Date(value).getTime()
+    return Number.isNaN(ms) ? null : ms
+  }
+  return null
+}
+
 // Panel de detalle del nodo (Diseño 12.3): formulario con autosave debounced 500ms.
 // Modo demo (F4.1): save/delete locales vía applyLocalEvent (cero fetch).
 export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
@@ -19,7 +40,7 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
   const [type, setType] = useState<NodeType>(node?.type ?? 'task')
   const [content, setContent] = useState(node?.content ?? '')
   const [status, setStatus] = useState<NodeStatus>(node?.status ?? 'todo')
-  const [dueDate, setDueDate] = useState<number | null>(node?.dueDate ? node.dueDate.getTime() : null)
+  const [dueDate, setDueDate] = useState<number | null>(getDueDateMs(node?.dueDate))
   const [reminderOffsetMin, setReminderOffsetMin] = useState<number | null>(node?.reminderOffsetMin ?? null)
   const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | null>(node?.recurrenceRule ?? null)
 
@@ -44,7 +65,7 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
     setType(node?.type ?? 'task')
     setContent(node?.content ?? '')
     setStatus(node?.status ?? 'todo')
-    setDueDate(node?.dueDate ? node.dueDate.getTime() : null)
+    setDueDate(getDueDateMs(node?.dueDate))
     setReminderOffsetMin(node?.reminderOffsetMin ?? null)
     setRecurrenceRule(node?.recurrenceRule ?? null)
   }, [node?.id])
