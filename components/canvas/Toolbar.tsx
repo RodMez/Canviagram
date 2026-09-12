@@ -50,9 +50,9 @@ type ToolbarProps = {
   onReorder?: () => void
   /** Id del workspace actual (para la campana de notificaciones). */
   workspaceId?: string
-  /** Vista activa del workspace (F6.1): Tablero o Canvas. */
-  view?: 'board' | 'canvas'
-  onChangeView?: (v: 'board' | 'canvas') => void
+  /** Vista activa del workspace (F6.1): Tablero, Tabla o Canvas. */
+  view?: 'board' | 'table' | 'canvas'
+  onChangeView?: (v: 'board' | 'table' | 'canvas') => void
 }
 
 export function Toolbar({
@@ -152,7 +152,7 @@ export function Toolbar({
         </Link>
       )}
 
-      {/* Switcher de vista (F6.1): Tablero ↔ Canvas, junto al nombre del workspace. */}
+      {/* Switcher de vista (F6.1): Tablero | Tabla ↔ Canvas, junto al nombre del workspace. */}
       {view && onChangeView ? (
         <div
           role="group"
@@ -169,6 +169,17 @@ export function Toolbar({
             )}
           >
             Tablero
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeView('table')}
+            aria-pressed={view === 'table'}
+            className={cn(
+              'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+              view === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            Tabla
           </button>
           <button
             type="button"
@@ -198,8 +209,8 @@ export function Toolbar({
       ) : null}
 
       {/* Reordenar: compacta el grafo a grilla limpia (fix solapes). Solo en Canvas:
-          no tiene sentido reordenar columnas de un Tablero (F6.1). */}
-      {onReorder && view !== 'board' ? (
+          no aplica al Tablero ni a la Tabla (F6.1/F4). */}
+      {onReorder && view === 'canvas' ? (
         <button
           onClick={onReorder}
           aria-label="Reordenar canvas"
