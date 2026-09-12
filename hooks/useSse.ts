@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { useCanvasStore } from '@/store/canvas-store'
+import { useBoardStore } from '@/store/board-store'
 import type { SSEEventName } from '@/lib/sse/types'
 
 // ============================================================
@@ -50,7 +51,7 @@ export function useSse({ workspaceId, onEvent, onStatus, enabled = true }: UseSs
       onStatus?.('connected')
     }
 
-    // Escuchar todos los eventos de canvas
+    // Escuchar todos los eventos de canvas + tablero
     const events: SSEEventName[] = [
       'node:created',
       'node:updated',
@@ -58,13 +59,20 @@ export function useSse({ workspaceId, onEvent, onStatus, enabled = true }: UseSs
       'edge:created',
       'edge:updated',
       'edge:deleted',
+      'column:created',
+      'column:updated',
+      'column:deleted',
     ]
 
     events.forEach((eventName) => {
       es.addEventListener(eventName, ((e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
-          applyEvent({ event: eventName, data })
+          if (eventName.startsWith('column:')) {
+            useBoardStore.getState().applyColumnEvent({ event: eventName, data })
+          } else {
+            applyEvent({ event: eventName, data })
+          }
           onEvent?.(eventName, data)
         } catch {
           console.warn('[useSse] Failed to parse event data:', e.data)

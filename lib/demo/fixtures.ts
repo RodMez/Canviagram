@@ -42,6 +42,11 @@ function makeNode(
     createdBy: 'demo',
     content: null,
     status: null,
+    priority: null,
+    effort: null,
+    assigneeId: null,
+    boardColumnId: null,
+    boardOrder: 0,
     dueDate: null,
     reminderOffsetMin: null,
     notifiedAt: null,
@@ -77,6 +82,11 @@ export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
       title: 'Diseñar la home',
       content: 'Mockup responsive en Figma',
       status: 'todo',
+      priority: 'high',
+      effort: 40,
+      assigneeId: null,
+      boardColumnId: 'demo-col-todo',
+      boardOrder: 1000,
       positionX: -260,
       positionY: 60,
     }),
@@ -86,6 +96,11 @@ export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
       title: 'Redactar 3 artículos',
       content: 'De 800 a 1200 palabras cada uno',
       status: 'in_progress',
+      priority: 'urgent',
+      effort: 70,
+      assigneeId: null,
+      boardColumnId: 'demo-col-progress',
+      boardOrder: 1000,
       positionX: -40,
       positionY: 60,
     }),
@@ -95,6 +110,11 @@ export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
       title: 'Publicar en producción',
       content: 'Desplegar y verificar dominio',
       status: 'done',
+      priority: 'medium',
+      effort: 20,
+      assigneeId: null,
+      boardColumnId: 'demo-col-done',
+      boardOrder: 1000,
       positionX: 180,
       positionY: 60,
     }),
@@ -141,6 +161,39 @@ export function getDemoFixtures(): { nodes: Node[]; edges: Edge[] } {
   ]
 
   return { nodes, edges }
+}
+
+/**
+ * Columnas demo del tablero (3 por defecto, ids estables para fixtures).
+ * No tocan DB: solo alimentan el board-store en modo demo.
+ */
+export function getDemoBoardColumns(): import('@/lib/db/schema').BoardColumn[] {
+  return [
+    {
+      id: 'demo-col-todo',
+      workspaceId: DEMO_WORKSPACE_ID,
+      title: 'Por hacer',
+      position: 0,
+      createdAt: DEMO_CREATED_AT,
+      updatedAt: DEMO_CREATED_AT,
+    },
+    {
+      id: 'demo-col-progress',
+      workspaceId: DEMO_WORKSPACE_ID,
+      title: 'En progreso',
+      position: 1000,
+      createdAt: DEMO_CREATED_AT,
+      updatedAt: DEMO_CREATED_AT,
+    },
+    {
+      id: 'demo-col-done',
+      workspaceId: DEMO_WORKSPACE_ID,
+      title: 'Hecho',
+      position: 2000,
+      createdAt: DEMO_CREATED_AT,
+      updatedAt: DEMO_CREATED_AT,
+    },
+  ]
 }
 
 /**

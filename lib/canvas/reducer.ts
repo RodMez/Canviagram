@@ -132,5 +132,9 @@ export function applyCanvasEvent(
       const { id } = data as { id: string; workspaceId: string }
       return { edges: state.edges.filter((e) => e.id !== id) }
     }
+
+    // column:* los consume el board-store (separado). Aquí cero efecto.
+    default:
+      return {}
   }
 }

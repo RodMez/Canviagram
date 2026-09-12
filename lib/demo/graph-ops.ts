@@ -51,6 +51,11 @@ export function createNode(graph: DemoGraph, input: unknown): Node {
     title: parsed!.title,
     content: parsed!.content ?? null,
     status: parsed!.status ?? null,
+    priority: (parsed as Record<string, unknown>).priority as Node['priority'] ?? null,
+    effort: (parsed as Record<string, unknown>).effort as Node['effort'] ?? null,
+    assigneeId: (parsed as Record<string, unknown>).assigneeId as Node['assigneeId'] ?? null,
+    boardColumnId: (parsed as Record<string, unknown>).boardColumnId as Node['boardColumnId'] ?? null,
+    boardOrder: 0,
     dueDate: parsed!.dueDate ? new Date(parsed!.dueDate) : null,
     reminderOffsetMin: parsed!.reminderOffsetMin ?? null,
     notifiedAt: null,
@@ -93,6 +98,22 @@ export function updateNode(graph: DemoGraph, nodeId: string, input: unknown): No
     title: parsed!.title ?? existing.title,
     content: parsed!.content !== undefined ? parsed!.content : existing.content,
     status: effectiveStatus,
+    priority:
+      (parsed as Record<string, unknown>).priority !== undefined
+        ? ((parsed as Record<string, unknown>).priority as Node['priority'])
+        : existing.priority,
+    effort:
+      (parsed as Record<string, unknown>).effort !== undefined
+        ? ((parsed as Record<string, unknown>).effort as Node['effort'])
+        : existing.effort,
+    assigneeId:
+      (parsed as Record<string, unknown>).assigneeId !== undefined
+        ? ((parsed as Record<string, unknown>).assigneeId as Node['assigneeId'])
+        : existing.assigneeId,
+    boardColumnId:
+      (parsed as Record<string, unknown>).boardColumnId !== undefined
+        ? ((parsed as Record<string, unknown>).boardColumnId as Node['boardColumnId'])
+        : existing.boardColumnId,
     dueDate: effectiveDueDate,
     recurrenceRule:
       effectiveDueDate == null
