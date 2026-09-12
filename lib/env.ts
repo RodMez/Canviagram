@@ -8,10 +8,16 @@ const envSchema = z
     DATABASE_URL: z.string().optional().default('canviagram.db'),
     NODE_ENV: z.enum(['development', 'test', 'production']).optional().default('development'),
     AI_API_KEY: z.string().optional(),
+    ANTHROPIC_API_KEY: z.string().optional(),
     AI_BASE_URL: z.string().url().optional().default('https://openrouter.ai/api/v1'),
     AI_MODEL: z.string().min(1).optional().default('openrouter/free'),
     TELEGRAM_BOT_TOKEN: z.string().optional(),
     TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+    TELEGRAM_WEBHOOK_URL: z.preprocess(
+      (v) => (v === '' ? undefined : v),
+      z.string().url().optional(),
+    ),
+    LINK_CODE_TTL_SECONDS: z.coerce.number().int().positive().catch(600).default(600),
     BREVO_API_KEY: z.string().optional(),
     EMAIL_FROM: z.string().email().optional(),
     BREVO_SENDER_EMAIL: z.string().email().optional(),
@@ -83,20 +89,25 @@ function parseEnv() {
     process.env.SESSION_SECRET = 'test-secret-32-chars-long-xxxxxxxxxxxxxxxxxxxxxxxx'
   }
 
-  // Fallback genérico: AI_API_KEY ?? ANTHROPIC_API_KEY (compat 1 sprint)
-  const aiApiKey = process.env.AI_API_KEY ?? process.env.ANTHROPIC_API_KEY
+  // Fallback genérico: AI_API_KEY || ANTHROPIC_API_KEY (compat 1 sprint)
+  // Se usa `||` (no `??`) porque docker-compose propaga `${AI_API_KEY:-}` como ""
+  // y "" no debe bloquear el fallback. `|| undefined` normaliza "" a undefined.
+  const aiApiKey = process.env.AI_API_KEY || process.env.ANTHROPIC_API_KEY || undefined
 
   const raw = {
     SESSION_SECRET: process.env.SESSION_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV as string | undefined,
     AI_API_KEY: aiApiKey,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     AI_BASE_URL: process.env.AI_BASE_URL,
     AI_MODEL: process.env.AI_MODEL,
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
     TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    TELEGRAM_WEBHOOK_URL: process.env.TELEGRAM_WEBHOOK_URL,
+    LINK_CODE_TTL_SECONDS: process.env.LINK_CODE_TTL_SECONDS,
     BREVO_API_KEY: process.env.BREVO_API_KEY,
-    EMAIL_FROM: process.env.EMAIL_FROM ?? process.env.BREVO_SENDER_EMAIL,
+    EMAIL_FROM: process.env.EMAIL_FROM || process.env.BREVO_SENDER_EMAIL || undefined,
     BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,

@@ -55,6 +55,22 @@ else
   echo "[entrypoint] AI provider: ${AI_BASE_URL:-https://openrouter.ai/api/v1} model=${AI_MODEL:-openrouter/free}"
 fi
 
+if [ -z "$BREVO_API_KEY" ]; then
+  echo "[entrypoint] WARN: BREVO_API_KEY not set — email deshabilitado" >&2
+fi
+
+if [ -z "$VAPID_PUBLIC_KEY" ] || [ -z "$VAPID_PRIVATE_KEY" ] || [ -z "$VAPID_SUBJECT" ]; then
+  echo "[entrypoint] WARN: VAPID_* incompleto — push deshabilitado" >&2
+fi
+
+if [ -z "$REMINDER_SWEEP_SECRET" ]; then
+  echo "[entrypoint] WARN: REMINDER_SWEEP_SECRET not set — sweeper devuelve 503" >&2
+fi
+
+if [ -z "$NEXT_PUBLIC_APP_URL" ]; then
+  echo "[entrypoint] WARN: NEXT_PUBLIC_APP_URL not set — links usan localhost" >&2
+fi
+
 echo "[entrypoint] Running database migrations..."
 node ./scripts/migrate.mjs
 

@@ -1,10 +1,11 @@
 import { env } from '@/lib/env'
 
 // TTL de códigos de vinculación en segundos (default 10 min).
-// Configurable vía LINK_CODE_TTL_SECONDS sin tocar lib/env.ts (diseño F4.2 §4.1 N1).
-const rawTtl = process.env.LINK_CODE_TTL_SECONDS
-const parsedTtl = rawTtl ? Number.parseInt(rawTtl, 10) : Number.NaN
-export const LINK_CODE_TTL_SECONDS = Number.isFinite(parsedTtl) && parsedTtl > 0 ? parsedTtl : 600
+// Centralizado vía env.LINK_CODE_TTL_SECONDS (lib/env.ts); clamp local como doble defensa.
+export const LINK_CODE_TTL_SECONDS =
+  Number.isFinite(env.LINK_CODE_TTL_SECONDS) && env.LINK_CODE_TTL_SECONDS > 0
+    ? env.LINK_CODE_TTL_SECONDS
+    : 600
 
 // Cap de códigos vivos en el Map en memoria (diseño F4.2 §1.2).
 export const MAX_CODES = 10_000
