@@ -1,4 +1,4 @@
-import type { Node, Edge } from '@/lib/db/schema'
+import type { Node, Edge, BoardColumn } from '@/lib/db/schema'
 
 // ============================================================
 // Eventos SSE publicados por canvas-service
@@ -12,6 +12,9 @@ export type SSEEventName =
   | 'edge:created'
   | 'edge:updated'
   | 'edge:deleted'
+  | 'column:created'
+  | 'column:updated'
+  | 'column:deleted'
 
 // Shape del data según cada evento (lo que publish emite)
 export type SSEEventData =
@@ -21,6 +24,9 @@ export type SSEEventData =
   | { event: 'edge:created'; data: Edge }
   | { event: 'edge:updated'; data: Edge }
   | { event: 'edge:deleted'; data: { id: string; workspaceId: string } }
+  | { event: 'column:created'; data: BoardColumn }
+  | { event: 'column:updated'; data: BoardColumn }
+  | { event: 'column:deleted'; data: { id: string; workspaceId: string } }
 
 export type SSEMessage = {
   event: SSEEventName

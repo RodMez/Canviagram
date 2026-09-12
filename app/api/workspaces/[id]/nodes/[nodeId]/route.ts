@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
 import { updateNode, softDeleteNode, ValidationError, NotFoundError, ForbiddenError } from '@/lib/canvas-service'
+import { ConflictError, UnprocessableError } from '@/lib/errors'
 
 export async function PATCH(
   request: Request,
@@ -31,6 +32,12 @@ export async function PATCH(
   } catch (error) {
     if (error instanceof ValidationError) {
       return NextResponse.json({ error: error.message, details: (error as ValidationError).details }, { status: 400 })
+    }
+    if (error instanceof UnprocessableError) {
+      return NextResponse.json({ error: error.message, details: error.details }, { status: 422 })
+    }
+    if (error instanceof ConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
     }
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 })

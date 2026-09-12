@@ -1,17 +1,17 @@
 ﻿import { db } from '@/lib/db'
-import { nodes, edges, type RecurrenceRule } from '@/lib/db/schema'
-import { eq, and, isNull, or, asc } from 'drizzle-orm'
+import { nodes, edges, boardColumns, users, workspaces, workspaceMembers, type RecurrenceRule } from '@/lib/db/schema'
+import { eq, and, isNull, or, asc, desc, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { createNodeSchema, updateNodeSchema } from '@/lib/validators/node'
 import { createEdgeSchema, updateEdgeSchema } from '@/lib/validators/edge'
 import { publish } from '@/lib/sse/pubsub'
 import { assertWorkspaceAccess, assertCanWrite } from '@/lib/auth/workspace-access'
-import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '@/lib/errors'
+import { ValidationError, NotFoundError, ForbiddenError, ConflictError, UnprocessableError } from '@/lib/errors'
 import { positionForIndex, occupiedIndex, findFreeSlots } from '@/lib/canvas/layout'
 import { computeDagreLayout } from '@/lib/canvas/dagre-layout'
 
 // Re-export errors for compatibility with routes importing from canvas-service
-export { ValidationError, NotFoundError, ForbiddenError, ConflictError }
+export { ValidationError, NotFoundError, ForbiddenError, ConflictError, UnprocessableError }
 
 // ============================================================
 // Helpers
@@ -35,6 +35,51 @@ function clampOffset(offset: number | undefined): number {
   const v = offset ?? 0
   if (!Number.isFinite(v)) return 0
   return Math.max(Math.trunc(v), 0)
+}
+
+// Cross-workspace checks (422, no 404): el recurso existe pero no pertenece.
+async function assertAssigneeForWorkspace(workspaceId: string, assigneeId: string): Promise<void> {
+  const user = await db.select({ id: users.id }).from(users).where(eq(users.id, assigneeId)).get()
+  if (!user) throw new UnprocessableError('El responsable no existe')
+  const ws = await db
+    .select({ ownerId: workspaces.ownerId })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .get()
+  if (ws?.ownerId === assigneeId) return
+  const membership = await db
+    .select({ id: workspaceMembers.id })
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, assigneeId)))
+    .get()
+  if (!membership) throw new UnprocessableError('El responsable no pertenece a este workspace')
+}
+
+async function assertBoardColumnForWorkspace(workspaceId: string, columnId: string): Promise<void> {
+  const col = await db.select().from(boardColumns).where(eq(boardColumns.id, columnId)).get()
+  if (!col) throw new NotFoundError('Columna no encontrada')
+  if (col.workspaceId !== workspaceId) {
+    throw new UnprocessableError('La columna no pertenece a este workspace')
+  }
+}
+
+function assertTaskOnlyFields(
+  effectiveType: string,
+  parsed: { priority?: unknown; effort?: unknown; assigneeId?: unknown; boardColumnId?: unknown; status?: unknown }
+): void {
+  if (effectiveType !== 'task') {
+    const offenders: Array<[string, unknown]> = [
+      ['priority', parsed.priority],
+      ['effort', parsed.effort],
+      ['assigneeId', parsed.assigneeId],
+      ['boardColumnId', parsed.boardColumnId],
+    ]
+    for (const [field, value] of offenders) {
+      if (value !== undefined && value !== null) {
+        throw new ValidationError(`Solo los nodos de tipo task pueden tener ${field}`)
+      }
+    }
+  }
 }
 
 // ============================================================
@@ -117,6 +162,23 @@ export async function createNode(workspaceId: string, userId: string, input: unk
     recurrenceRule: null,
   })
 
+  assertTaskOnlyFields(parsed!.type, parsed! as Record<string, unknown>)
+  if (parsed!.assigneeId) {
+    await assertAssigneeForWorkspace(workspaceId, parsed!.assigneeId)
+  }
+  let boardColumnId: string | null = parsed!.boardColumnId ?? null
+  let boardOrder = 0
+  if (boardColumnId) {
+    await assertBoardColumnForWorkspace(workspaceId, boardColumnId)
+    const maxRow = await db
+      .select({ m: sql<number | null>`max(${nodes.boardOrder})` })
+      .from(nodes)
+      .where(and(eq(nodes.workspaceId, workspaceId), eq(nodes.boardColumnId, boardColumnId)))
+      .get()
+    boardOrder = (Number((maxRow as { m: number | null } | undefined)?.m) || 0) + 1000
+    if (!Number.isFinite(boardOrder)) boardOrder = 1000
+  }
+
   const [inserted] = await db
     .insert(nodes)
     .values({
@@ -127,6 +189,11 @@ export async function createNode(workspaceId: string, userId: string, input: unk
       title: parsed!.title,
       content: parsed!.content ?? null,
       status: parsed!.status ?? null,
+      priority: parsed!.priority ?? null,
+      effort: parsed!.effort ?? null,
+      assigneeId: parsed!.assigneeId ?? null,
+      boardColumnId,
+      boardOrder,
       dueDate: reminder.dueDate,
       reminderOffsetMin: reminder.reminderOffsetMin,
       notifiedAt: null,
@@ -175,6 +242,15 @@ export async function updateNode(
   if (effectiveStatus && effectiveType !== 'task') {
     throw new ValidationError('Solo los nodos de tipo task pueden tener estado')
   }
+  assertTaskOnlyFields(effectiveType, parsed! as Record<string, unknown>)
+
+  // Cross-workspace 422: assignee debe pertenecer al workspace; columna al workspace.
+  if (parsed!.assigneeId !== undefined && parsed!.assigneeId !== null) {
+    await assertAssigneeForWorkspace(workspaceId, parsed!.assigneeId)
+  }
+  if (parsed!.boardColumnId !== undefined && parsed!.boardColumnId !== null) {
+    await assertBoardColumnForWorkspace(workspaceId, parsed!.boardColumnId)
+  }
 
   const now = new Date()
 
@@ -198,6 +274,10 @@ export async function updateNode(
   if (parsed!.title !== undefined) updateData.title = parsed!.title
   if (parsed!.content !== undefined) updateData.content = parsed!.content
   if (parsed!.status !== undefined) updateData.status = parsed!.status
+  if (parsed!.priority !== undefined) updateData.priority = parsed!.priority
+  if (parsed!.effort !== undefined) updateData.effort = parsed!.effort
+  if (parsed!.assigneeId !== undefined) updateData.assigneeId = parsed!.assigneeId
+  if (parsed!.boardColumnId !== undefined) updateData.boardColumnId = parsed!.boardColumnId
   if (parsed!.positionX !== undefined) updateData.positionX = parsed!.positionX
   if (parsed!.positionY !== undefined) updateData.positionY = parsed!.positionY
   if ((reminder.dueDate?.getTime() ?? null) !== (existing.dueDate?.getTime() ?? null)) {
@@ -261,21 +341,76 @@ export async function softDeleteNode(workspaceId: string, nodeId: string, userId
   return deleted ?? { ...existing, deletedAt: now, updatedAt: now }
 }
 
+export const NODE_LIST_SORTS = ['createdAt', 'updatedAt', 'title', 'priority', 'effort', 'boardOrder'] as const
+export type NodeListSort = (typeof NODE_LIST_SORTS)[number]
+
+export type ListNodesOptions = {
+  limit?: number
+  offset?: number
+  assigneeId?: string
+  priority?: string
+  boardColumnId?: string
+  sort?: NodeListSort
+  dir?: 'asc' | 'desc'
+}
+
+const PRIORITY_ORDER_CASE = sql`CASE ${nodes.priority} WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END`
+
 export async function listNodes(
   workspaceId: string,
   userId: string,
-  options?: { limit?: number; offset?: number }
+  options?: ListNodesOptions
 ) {
   await assertWorkspaceAccess(workspaceId, userId, 'viewer')
 
   const limit = clampLimit(options?.limit)
   const offset = clampOffset(options?.offset)
 
+  const conditions = [eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)]
+  if (options?.assigneeId) {
+    conditions.push(eq(nodes.assigneeId, options.assigneeId))
+  }
+  if (options?.priority) {
+    conditions.push(eq(nodes.priority, options.priority as never))
+  }
+  if (options?.boardColumnId) {
+    conditions.push(eq(nodes.boardColumnId, options.boardColumnId))
+  }
+
+  const sort = NODE_LIST_SORTS.includes(options?.sort as NodeListSort)
+    ? (options!.sort as NodeListSort)
+    : 'createdAt'
+  const dir = options?.dir === 'desc' ? 'desc' : 'asc'
+  const orderExpr = (expr: unknown) => (dir === 'desc' ? desc(expr as never) : asc(expr as never))
+
+  let orderBy: ReturnType<typeof asc>
+  switch (sort) {
+    case 'title':
+      orderBy = orderExpr(nodes.title)
+      break
+    case 'updatedAt':
+      orderBy = orderExpr(nodes.updatedAt)
+      break
+    case 'priority':
+      orderBy = orderExpr(PRIORITY_ORDER_CASE)
+      break
+    case 'effort':
+      orderBy = orderExpr(nodes.effort)
+      break
+    case 'boardOrder':
+      orderBy = orderExpr(nodes.boardOrder)
+      break
+    case 'createdAt':
+    default:
+      orderBy = orderExpr(nodes.createdAt)
+      break
+  }
+
   const result = await db
     .select()
     .from(nodes)
-    .where(and(eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
-    .orderBy(asc(nodes.createdAt))
+    .where(and(...conditions))
+    .orderBy(orderBy)
     .limit(limit)
     .offset(offset)
     .all()
