@@ -53,6 +53,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/lib/db/migrations ./lib/db/migrat
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/migrate.mjs ./scripts/migrate.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/set-telegram-webhook.mjs ./scripts/set-telegram-webhook.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/set-telegram-commands.mjs ./scripts/set-telegram-commands.mjs
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
