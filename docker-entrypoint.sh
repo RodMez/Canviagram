@@ -61,6 +61,9 @@ node ./scripts/migrate.mjs
 if [ -n "$TELEGRAM_WEBHOOK_URL" ]; then
   echo "[entrypoint] Setting Telegram webhook: $TELEGRAM_WEBHOOK_URL"
   node ./scripts/set-telegram-webhook.mjs --url "$TELEGRAM_WEBHOOK_URL" || echo "[entrypoint] WARN: webhook no configurado (reintenta tras arrancar)" >&2
+
+  echo "[entrypoint] Publishing Telegram commands..."
+  node ./scripts/set-telegram-commands.mjs --set || echo "[entrypoint] WARN: comandos no publicados (reintenta tras arrancar)" >&2
 fi
 
 echo "[entrypoint] Starting application..."
