@@ -2,8 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import { useCanvasStore, selectSelectedNode } from '@/store/canvas-store'
+import { useBoardStore } from '@/store/board-store'
 import { useDebouncedSave, createNodeSaveFn } from '@/hooks/useDebouncedSave'
-import { NODE_TYPES, NODE_STATUSES, RECURRENCE_RULES, type NodeType, type NodeStatus, type RecurrenceRule } from '@/lib/db/schema'
+import { useWorkspaceMembers } from '@/hooks/useWorkspaceMembers'
+import { columnForStatus, mappedStatus } from '@/lib/canvas/board-columns'
+import {
+  NODE_TYPES,
+  NODE_STATUSES,
+  NODE_PRIORITIES,
+  RECURRENCE_RULES,
+  type NodeType,
+  type NodeStatus,
+  type NodePriority,
+  type RecurrenceRule,
+} from '@/lib/db/schema'
 import { isDemoWorkspace } from '@/lib/demo/fixtures'
 
 type NodeDetailPanelProps = { workspaceId: string; userId: string }
@@ -35,11 +47,17 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
   const node = useCanvasStore(selectSelectedNode)
   const selectNode = useCanvasStore((s) => s.selectNode)
   const applyLocalEvent = useCanvasStore((s) => s.applyLocalEvent)
+  const boardColumns = useBoardStore((s) => s.columns)
+  const { members } = useWorkspaceMembers(workspaceId)
   const isDemo = isDemoWorkspace(workspaceId)
   const [title, setTitle] = useState(node?.title ?? '')
   const [type, setType] = useState<NodeType>(node?.type ?? 'task')
   const [content, setContent] = useState(node?.content ?? '')
   const [status, setStatus] = useState<NodeStatus>(node?.status ?? 'todo')
+  const [priority, setPriority] = useState<NodePriority | null>(node?.priority ?? null)
+  const [effort, setEffort] = useState<string>(node?.effort == null ? '' : String(node?.effort))
+  const [assigneeId, setAssigneeId] = useState<string | null>(node?.assigneeId ?? null)
+  const [boardColumnId, setBoardColumnId] = useState<string | null>(node?.boardColumnId ?? null)
   const [dueDate, setDueDate] = useState<number | null>(getDueDateMs(node?.dueDate))
   const [reminderOffsetMin, setReminderOffsetMin] = useState<number | null>(node?.reminderOffsetMin ?? null)
   const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | null>(node?.recurrenceRule ?? null)
@@ -65,6 +83,10 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
     setType(node?.type ?? 'task')
     setContent(node?.content ?? '')
     setStatus(node?.status ?? 'todo')
+    setPriority(node?.priority ?? null)
+    setEffort(node?.effort == null ? '' : String(node?.effort))
+    setAssigneeId(node?.assigneeId ?? null)
+    setBoardColumnId(node?.boardColumnId ?? null)
     setDueDate(getDueDateMs(node?.dueDate))
     setReminderOffsetMin(node?.reminderOffsetMin ?? null)
     setRecurrenceRule(node?.recurrenceRule ?? null)
@@ -72,6 +94,8 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
   /* eslint-enable react-hooks/exhaustive-deps */
 
   if (!node) return null
+
+  const isTask = type === 'task'
 
   const handleDelete = async () => {
     try {
@@ -143,8 +167,26 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
             onChange={(e) => {
               const nextType = e.target.value as NodeType
               setType(nextType)
-              // Cambio a no-task realoja status (solo task puede tener status).
-              save.trigger(nextType !== 'task' ? { type: nextType, status: null } : { type: nextType })
+              // Cambio a no-task realoja TODOS los campos task-only (el server
+              // rechaza si quedan): status + prioridad + esfuerzo + responsable
+              // + columna.
+              if (nextType !== 'task') {
+                setStatus('todo')
+                setPriority(null)
+                setEffort('')
+                setAssigneeId(null)
+                setBoardColumnId(null)
+                save.trigger({
+                  type: nextType,
+                  status: null,
+                  priority: null,
+                  effort: null,
+                  assigneeId: null,
+                  boardColumnId: null,
+                })
+              } else {
+                save.trigger({ type: nextType })
+              }
             }}
             onBlur={() => save.flush()}
             className={fieldCls}
@@ -164,18 +206,121 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
           />
         </label>
 
-        {type === 'task' && (
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Estado</span>
-            <select
-              value={status}
-              onChange={(e) => { setStatus(e.target.value as NodeStatus); save.trigger({ status: e.target.value as NodeStatus }) }}
-              onBlur={() => save.flush()}
-              className={fieldCls}
-            >
-              {NODE_STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-            </select>
-          </label>
+        {isTask && (
+          <>
+            <label className="block">
+              <span className="text-xs font-medium text-muted-foreground">Columna del tablero</span>
+              <select
+                value={boardColumnId ?? ''}
+                onChange={(e) => {
+                  const colId = e.target.value
+                  setBoardColumnId(colId)
+                  // Coherencia: la columna determina el status visible.
+                  // Mismo mapeo que el servidor aplica en POST /board/move.
+                  const next = mappedStatus(colId, boardColumns)
+                  setStatus(next)
+                  save.trigger({ boardColumnId: colId, status: next })
+                }}
+                onBlur={() => save.flush()}
+                className={fieldCls}
+              >
+                {boardColumns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-medium text-muted-foreground">Estado</span>
+              <select
+                value={status}
+                onChange={(e) => {
+                  const next = e.target.value as NodeStatus
+                  setStatus(next)
+                  // Sincroniza con el tablero: status → primera columna que lo
+                  // mapea. Si el usuario elige column ≠ status, manda la columna.
+                  const col = boardColumns.length > 0 ? columnForStatus(boardColumns, next) : undefined
+                  if (col) {
+                    setBoardColumnId(col.id)
+                    save.trigger({ status: next, boardColumnId: col.id })
+                  } else {
+                    save.trigger({ status: next })
+                  }
+                }}
+                onBlur={() => save.flush()}
+                className={fieldCls}
+              >
+                {NODE_STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+              </select>
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Prioridad</span>
+                <select
+                  value={priority ?? ''}
+                  onChange={(e) => {
+                    const next = (e.target.value || null) as NodePriority | null
+                    setPriority(next)
+                    save.trigger({ priority: next })
+                  }}
+                  onBlur={() => save.flush()}
+                  className={fieldCls}
+                >
+                  <option value="">—</option>
+                  {NODE_PRIORITIES.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Esfuerzo (0–100)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={effort}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    setEffort(raw)
+                    if (raw === '') {
+                      save.trigger({ effort: null })
+                      return
+                    }
+                    const n = Math.round(Number(raw))
+                    if (Number.isFinite(n)) save.trigger({ effort: Math.max(0, Math.min(100, n)) })
+                  }}
+                  onBlur={() => save.flush()}
+                  className={fieldCls}
+                />
+              </label>
+            </div>
+
+            <label className="block">
+              <span className="text-xs font-medium text-muted-foreground">Responsable</span>
+              <select
+                value={assigneeId ?? ''}
+                onChange={(e) => {
+                  const next = e.target.value || null
+                  setAssigneeId(next)
+                  save.trigger({ assigneeId: next })
+                }}
+                onBlur={() => save.flush()}
+                className={fieldCls}
+              >
+                <option value="">Sin asignar</option>
+                {members.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
         )}
 
         <label className="block">

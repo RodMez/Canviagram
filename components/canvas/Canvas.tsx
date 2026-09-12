@@ -21,6 +21,7 @@ import { createPositionSaveFn } from '@/hooks/useDebouncedSave'
 import { nodeTypes, edgeTypes } from './nodes'
 import { CreateNodePopup } from './CreateNodePopup'
 import { isDemoWorkspace, demoId } from '@/lib/demo/fixtures'
+import { deleteNodeFromWorkspace, deleteEdgeFromWorkspace } from '@/lib/canvas/node-mutations'
 import type { Edge } from '@/lib/db/schema'
 import type { CreateNodeRequest } from '@/app/(app)/w/[slug]/workspace-client'
 
@@ -186,6 +187,33 @@ function CanvasInner({
     [selectNode]
   )
 
+  // RF → Store: Delete/Backspace sobre nodos seleccionados (F5). El borrado es
+  // OPTIMISTA local (applyLocalEvent idempotente) + DELETE en server/demos
+  // — antes, sin este handler, el canvas "se movía pero no se eliminaba".
+  const handleNodesDelete = useCallback(
+    (deleted: RFNode[]) => {
+      for (const n of deleted) {
+        deleteNodeFromWorkspace(workspaceId, String(n.id)).catch((err) => {
+          console.error('[Canvas] node delete failed', err)
+        })
+      }
+    },
+    [workspaceId]
+  )
+
+  // RF → Store: Delete sobre edges seleccionados. Mismo principio: optimismo
+  // local + DELETE server.
+  const handleEdgesDelete = useCallback(
+    (deleted: { id: string }[]) => {
+      for (const e of deleted) {
+        deleteEdgeFromWorkspace(workspaceId, String(e.id)).catch((err) => {
+          console.error('[Canvas] edge delete failed', err)
+        })
+      }
+    },
+    [workspaceId]
+  )
+
   // Doble clic en el lienzo vacío → abre CreateNodePopup en esa posición.
   // React Flow v12 no expone onPaneDoubleClick; detectamos doble clic sobre onPaneClick.
   const handlePaneClick = useCallback(
@@ -223,6 +251,8 @@ function CanvasInner({
         onNodesChange={handleNodesChange}
         onConnect={handleConnect}
         onSelectionChange={handleSelectionChange}
+        onNodesDelete={handleNodesDelete}
+        onEdgesDelete={handleEdgesDelete}
         onPaneClick={handlePaneClick}
         deleteKeyCode={['Backspace', 'Delete']}
         proOptions={{ hideAttribution: true }}
