@@ -27,6 +27,13 @@ import {
   clearChatMessages,
 } from '@/lib/chat/repository'
 import { escapeHtml, formatForTelegram } from '@/lib/telegram/format'
+import {
+  SWITCH_RE as SHARED_SWITCH_RE,
+  normalizeWs as sharedNormalizeWs,
+  matchWorkspace as sharedMatchWorkspace,
+  extractSwitchQuery,
+  type WorkspaceListItem as SharedWorkspaceListItem,
+} from '@/lib/workspace/switch'
 
 // Re-export para compatibilidad (antes escapeHtml vivía aquí; tests lo
 // importan desde @/lib/telegram/bot). La implementación está en format.ts.
@@ -56,7 +63,8 @@ export function parseCommand(text: string | undefined): ParsedCommand {
 }
 
 // Item mínimo para teclados/búsqueda (compatible con filas de workspaces).
-export type WorkspaceListItem = { id: string; name: string; slug: string }
+// Canonical en lib/workspace/switch.ts; se re-exporta para compat con tests.
+export type WorkspaceListItem = SharedWorkspaceListItem
 
 // Teclado inline con un botón por workspace: callback_data "usar:<uuid>" (41B,
 // dentro del límite 1-64B de Telegram). El activo lleva " ✅".
@@ -74,34 +82,12 @@ export function buildWorkspaceKeyboard(
   }
 }
 
-// Normaliza para búsqueda aproximada: minúsculas, sin tildes, guiones/guiones
-// bajos → espacio, espacios colapsados.
-export function normalizeWs(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-}
-
-// Coincidencias por subcadena normalizada sobre nombre o slug (en ambos
-// sentidos para tolerar queries más largas que el nombre).
-export function matchWorkspace(query: string, ws: WorkspaceListItem[]): WorkspaceListItem[] {
-  const q = normalizeWs(query)
-  if (!q) return []
-  return ws.filter((w) => {
-    const name = normalizeWs(w.name)
-    const slug = normalizeWs(w.slug)
-    return name.includes(q) || slug.includes(q) || q.includes(name) || q.includes(slug)
-  })
-}
-
-// Intención de cambio en lenguaje natural (sin "/"): "usar X", "usa X",
-// "cambia/cambiar (a|al|de|el) X", "switch to X". El grupo 1 es la query.
-// Condiciones de intercept (en handleMessage): q.trim().length >= 2 y sin "\n".
-export const SWITCH_RE = /^(?:usar|usa|cambia(?:r)?(?:\s+(?:a|al|de|el))?|switch\s+to)\s+(.+?)\s*$/i
+// Helpers de switch con implementacion canonica en lib/workspace/switch.ts
+// (paridad bot/web). Se re-exportan para no romper imports existentes.
+export const normalizeWs = sharedNormalizeWs
+export const matchWorkspace = sharedMatchWorkspace
+export const SWITCH_RE = SHARED_SWITCH_RE
+export { extractSwitchQuery }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -274,21 +260,28 @@ function formatTimestamp(value: Date | null | undefined): string {
 }
 
 /**
- * /link CÓDIGO — vincula el chat a la CUENTA de Canviagram del claim y deja
- * como workspace activo el del código (Fase 1: el usuario decide dónde trabajar,
- * cambiando después con /lista + /usar sin desvincular la cuenta).
- * El código se normaliza a UPPER aquí (parseCommand ya no upperca args).
+ * /link CÓDIGO — vincula el chat a la CUENTA de Canviagram del claim (global,
+ * una sola vez). Si el código trae workspace, queda como activo inicial;
+ * si es global (null), el usuario elige con /lista. Cambiar después nunca
+ * exige revincular (/lista + /usar o "usa NOMBRE").
  */
 export async function handleLink(ctx: TelegramReplyCtx, code: string): Promise<void> {
   const result = consumeLinkCode(code.trim().toUpperCase())
   if (!result.ok) {
-    await ctx.reply('❌ Código inválido o expirado. Genera uno nuevo en Ajustes → Telegram (válido por 10 minutos).', {
+    await ctx.reply('❌ Código inválido o expirado. Genera uno nuevo en tu cuenta → Telegram (válido por 10 minutos).', {
       parse_mode: 'HTML',
     })
     return
   }
 
   await upsertBinding(ctx.chatId, ctx.tgUserId, { userId: result.userId, workspaceId: result.workspaceId })
+  if (!result.workspaceId) {
+    await ctx.reply(
+      `✅ Chat vinculado a tu cuenta de Canviagram.\nUsa /lista para elegir dónde trabajar. ${SINGLE_PERMISSION_COPY}`,
+      { parse_mode: 'HTML' }
+    )
+    return
+  }
   const name = await getWorkspaceName(result.workspaceId)
   await ctx.reply(
     `✅ Chat vinculado a tu cuenta de Canviagram.\nWorkspace activo: «${escapeHtml(name)}»\nUsa /lista para ver tus workspaces y /usar NOMBRE para cambiar. ${SINGLE_PERMISSION_COPY}`,
@@ -315,7 +308,7 @@ export async function handleUnlink(ctx: TelegramReplyCtx): Promise<void> {
 export async function handleList(ctx: TelegramReplyCtx): Promise<void> {
   const binding = await findBinding(ctx.chatId, ctx.tgUserId)
   if (!binding) {
-    await ctx.reply('Este chat no está vinculado a ninguna cuenta. Usa /link CÓDIGO (genera el código en Ajustes → Telegram).', {
+    await ctx.reply('Este chat no está vinculado a ninguna cuenta. Usa /link CÓDIGO (genera el código en tu cuenta (web) → Telegram).', {
       parse_mode: 'HTML',
     })
     return
@@ -512,7 +505,7 @@ export async function handleMessage(ctx: TelegramReplyCtx, text: string): Promis
   // hallada por (chat.id, from.id) — nunca del texto del mensaje (diseño F4.2 §2.2).
   const binding = await findBinding(ctx.chatId, ctx.tgUserId)
   if (!binding) {
-    await ctx.reply('Este chat no está vinculado a ninguna cuenta. Vincula tu chat en Ajustes → Telegram y usa /link CÓDIGO.', {
+    await ctx.reply('Este chat no está vinculado a ninguna cuenta. Vincula tu chat en tu cuenta → Telegram y usa /link CÓDIGO (una sola vez para todos tus workspaces).', {
       parse_mode: 'HTML',
     })
     return
@@ -650,10 +643,10 @@ export function toCallbackCtx(ctx: Context): TelegramCallbackCtx {
 }
 
 const START_TEXT =
-  'Hola 👋\nSoy el asistente de Canviagram.\nVincula tu chat en Ajustes → Telegram usando /link CÓDIGO. 1 vinculación vale para todos tus workspaces.\n\nComandos:\n/start — iniciar el bot y ver bienvenida\n/help — ver ayuda y comandos\n/link CÓDIGO — vincula este chat a tu cuenta\n/lista — tus workspaces (con botones)\n/usar NOMBRE — elige dónde trabajar (o toca un botón)\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\n\nTip: escribe "usar nombre-del-workspace" para cambiar sin comandos.\nEnvía un mensaje normal para crear nodos con IA.'
+  'Hola.\nSoy el asistente de Canviagram.\nVincula este chat una sola vez en tu cuenta (web) → Telegram usando /link CODIGO. 1 vinculacion vale para todos tus workspaces.\n\nComandos:\n/start — ver bienvenida\n/help — ver ayuda\n/link CODIGO — vincula este chat a tu cuenta (una sola vez)\n/lista — tus workspaces (con botones)\n/usar NOMBRE — elige donde trabajar (o toca un boton)\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\n\nTip: escribe "usar nombre-del-workspace" para cambiar sin comandos ni revincular.\nEnvía un mensaje normal para crear nodos con IA.'
 
 const HELP_TEXT =
-  'Comandos:\n/start — iniciar el bot y ver bienvenida\n/help — ver ayuda y comandos\n/link CÓDIGO — vincula este chat a tu cuenta\n/lista — tus workspaces (con botones)\n/usar NOMBRE — elige dónde trabajar, con búsqueda aproximada (sin NOMBRE muestra botones)\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\nEnvía un mensaje normal para crear nodos con IA.\n\n1 vinculación vale para todos tus workspaces.\nPuedes cambiar con /usar NOMBRE (aproximado), con los botones de /lista o escribiendo "usar NOMBRE".'
+  'Comandos:\n/start — ver bienvenida\n/help — ver ayuda\n/link CODIGO — vincula este chat a tu cuenta (una sola vez)\n/lista — tus workspaces (con botones)\n/usar NOMBRE — elige donde trabajar, con busqueda aproximada (sin NOMBRE muestra botones)\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\nEnvía un mensaje normal para crear nodos con IA.\n\n1 vinculacion vale para todos tus workspaces.\nCambia con /usar NOMBRE, con los botones de /lista o escribiendo "usar NOMBRE" (sin /unlink ni /link de nuevo).'
 
 export function registerHandlers(bot: Bot): void {
   // bot.catch: log update_id + err.message (nunca el update completo) + reply genérico.
@@ -692,7 +685,7 @@ export function registerHandlers(bot: Bot): void {
             const binding = await findBinding(replyCtx.chatId, replyCtx.tgUserId)
             if (!binding) {
               await ctx.reply(
-                'Para vincular este chat, genera un código en Ajustes → Telegram y envía /link CÓDIGO (válido por 10 minutos). 1 vinculación vale para todos tus workspaces.',
+                'Para vincular este chat, genera un código en tu cuenta (web) → Telegram y envía /link CÓDIGO (válido por 10 minutos). 1 vinculación vale para todos tus workspaces.',
                 { parse_mode: 'HTML' }
               )
               return
