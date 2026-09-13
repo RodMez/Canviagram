@@ -18,13 +18,13 @@ export async function findBinding(chatId: string, tgUserId: string): Promise<Tel
 }
 
 /**
- * Vincula (o re-vincula) un chat a una cuenta. `workspaceId` es el workspace que
- * queda ACTIVO tras el /link (el claim incluye el workspace donde se generó).
+ * Vincula (o re-vincula) un chat a una CUENTA. `workspaceId` es el workspace que
+ * queda ACTIVO tras el /link, o null en vínculo global (el usuario elige con /lista).
  */
 export async function upsertBinding(
   chatId: string,
   tgUserId: string,
-  claim: { userId: string; workspaceId: string },
+  claim: { userId: string; workspaceId: string | null },
   createdAt?: Date
 ): Promise<void> {
   const existing = await findBinding(chatId, tgUserId)
@@ -102,8 +102,27 @@ export async function listChatsForUsers(userIds: string[]): Promise<TelegramBind
 
 /**
  * Borra los bindings cuyo workspace ACTIVO es `workspaceId`.
- * Usado por DELETE /api/workspaces/[id]/telegram/link (diseño F4.3 §7).
+ * @deprecated En modelo global no borrar la cuenta: usar resetActiveWorkspacesByWorkspace.
+ * Se mantiene por compat con tests/wrappers legacy.
  */
 export async function deleteBindingsByWorkspace(workspaceId: string): Promise<void> {
   await db.delete(telegramChats).where(eq(telegramChats.activeWorkspaceId, workspaceId))
+}
+
+/** Borra TODOS los bindings de una cuenta (unlink global desde la web). */
+export async function deleteBindingsByUser(userId: string): Promise<number> {
+  const rows = await db.select().from(telegramChats).where(eq(telegramChats.userId, userId))
+  await db.delete(telegramChats).where(eq(telegramChats.userId, userId))
+  return rows.length
+}
+
+/**
+ * Quita el workspace ACTIVO sin borrar la cuenta (borrado de workspace o
+ * desvinculación por workspace legacy). El vínculo global sobrevive con activo null.
+ */
+export async function resetActiveWorkspacesByWorkspace(workspaceId: string): Promise<void> {
+  await db
+    .update(telegramChats)
+    .set({ activeWorkspaceId: null, lastActivityAt: new Date() })
+    .where(eq(telegramChats.activeWorkspaceId, workspaceId))
 }

@@ -1,10 +1,10 @@
 import { randomBytes } from 'crypto'
 import { LINK_CODE_LENGTH, LINK_CODE_TTL_SECONDS, MAX_CODES, TG_ALPHABET } from '@/lib/telegram/config'
 
-export type LinkClaim = { workspaceId: string; userId: string; expiresAt: number }
+export type LinkClaim = { workspaceId: string | null; userId: string; expiresAt: number }
 
 export type ConsumeResult =
-  | { ok: true; workspaceId: string; userId: string }
+  | { ok: true; workspaceId: string | null; userId: string }
   | { ok: false; reason: 'not_found' | 'expired' }
 
 // Map en memoria (precedente lib/sse/pubsub.ts): replicas:1, pérdida en restart = regenerar.
@@ -33,7 +33,7 @@ function sweepExpired(now: number): void {
  * LINK_CODE_TTL_SECONDS y MAX_CODES de config (diseño F4.2 §5.4 + §7.1).
  */
 export function createLinkCode(
-  input: { workspaceId: string; userId: string },
+  input: { workspaceId?: string | null; userId: string },
   options?: { ttlSeconds?: number; maxCodes?: number }
 ): { code: string; expiresAt: Date } {
   const ttlSeconds = options?.ttlSeconds ?? LINK_CODE_TTL_SECONDS
@@ -53,7 +53,7 @@ export function createLinkCode(
   }
 
   const expiresAt = new Date(now + ttlSeconds * 1000)
-  store.set(code, { workspaceId: input.workspaceId, userId: input.userId, expiresAt: expiresAt.getTime() })
+  store.set(code, { workspaceId: input.workspaceId ?? null, userId: input.userId, expiresAt: expiresAt.getTime() })
   return { code, expiresAt }
 }
 

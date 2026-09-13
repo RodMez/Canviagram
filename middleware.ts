@@ -17,7 +17,9 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/workspaces/') ||
     pathname.startsWith('/api/ai/') ||
     pathname.startsWith('/api/today') ||
-    pathname.startsWith('/api/admin')
+    pathname.startsWith('/api/admin') ||
+    pathname === '/api/telegram/link' ||
+    pathname === '/api/telegram/status'
   if (!isProtected) return NextResponse.next()
   const isAuthenticated = request.cookies.has('__Host-session')
   if (!isAuthenticated) {
@@ -30,5 +32,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/w/:path*', '/workspaces/:path*', '/today/:path*', '/admin/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*', '/api/today', '/api/admin/:path*'],
+  matcher: ['/w/:path*', '/workspaces/:path*', '/today/:path*', '/admin/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*', '/api/today', '/api/admin/:path*', '/api/telegram/link', '/api/telegram/status'],
 }
