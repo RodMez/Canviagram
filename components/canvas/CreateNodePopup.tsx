@@ -62,6 +62,7 @@ export function CreateNodePopup({ screenPos, flowPos, workspaceId, onClose, init
           priority: null,
           effort: null,
           assigneeId: null,
+          linkedUserId: null,
           boardColumnId: type === 'task' ? boardColumnId : null,
           boardOrder: 0,
           dueDate: null,

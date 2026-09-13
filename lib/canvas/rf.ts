@@ -25,14 +25,17 @@ export type CanvasRFEdge = RFEdge<CanvasEdgeData>
 
 export function storeToRfNodes(
   nodes: DBNode[],
-  workspaceId: string
+  workspaceId: string,
+  selectedNodeId?: string | null
 ): CanvasRFNode[] {
   return nodes.map((n) => ({
     id: n.id,
     type: n.type,
     position: { x: n.positionX, y: n.positionY },
     data: { domain: n, workspaceId },
-    selected: false, // la selección la gobierna el store (selectedNodeId)
+    // Selección controlada por el store: necesaria para que Supr/Backspace
+    // eliminen y para que los updates SSE no la pierdan.
+    selected: selectedNodeId != null && n.id === selectedNodeId,
   }))
 }
 

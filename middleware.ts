@@ -5,6 +5,11 @@ const EXCLUDED_PREFIX = ['/api/auth/', '/api/health', '/_next/', '/favicon.ico']
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
+  const isAuthenticated = request.cookies.has('__Host-session')
+  // Logueado: landing (/), inicio y login redirigen a la página del usuario.
+  if (isAuthenticated && (pathname === '/' || pathname === '/login' || pathname === '/register')) {
+    return NextResponse.redirect(new URL('/today', request.url))
+  }
   if (EXCLUDED_EXACT.has(pathname)) return NextResponse.next()
   if (EXCLUDED_PREFIX.some((p) => pathname.startsWith(p))) return NextResponse.next()
   if (pathname.startsWith('/verify-email')) return NextResponse.next()
@@ -21,7 +26,6 @@ export function middleware(request: NextRequest) {
     pathname === '/api/telegram/link' ||
     pathname === '/api/telegram/status'
   if (!isProtected) return NextResponse.next()
-  const isAuthenticated = request.cookies.has('__Host-session')
   if (!isAuthenticated) {
     if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     const loginUrl = new URL('/login', request.url)
@@ -32,5 +36,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/w/:path*', '/workspaces/:path*', '/today/:path*', '/admin/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*', '/api/today', '/api/admin/:path*', '/api/telegram/link', '/api/telegram/status'],
+  matcher: ['/', '/login', '/register', '/w/:path*', '/workspaces/:path*', '/today/:path*', '/admin/:path*', '/settings/:path*', '/api/workspaces/:path*', '/api/ai/:path*', '/api/today', '/api/admin/:path*', '/api/telegram/link', '/api/telegram/status'],
 }

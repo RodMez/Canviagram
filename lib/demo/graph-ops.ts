@@ -54,6 +54,7 @@ export function createNode(graph: DemoGraph, input: unknown): Node {
     priority: (parsed as Record<string, unknown>).priority as Node['priority'] ?? null,
     effort: (parsed as Record<string, unknown>).effort as Node['effort'] ?? null,
     assigneeId: (parsed as Record<string, unknown>).assigneeId as Node['assigneeId'] ?? null,
+    linkedUserId: (parsed as Record<string, unknown>).linkedUserId as Node['linkedUserId'] ?? null,
     boardColumnId: (parsed as Record<string, unknown>).boardColumnId as Node['boardColumnId'] ?? null,
     boardOrder: 0,
     dueDate: parsed!.dueDate ? new Date(parsed!.dueDate) : null,
@@ -85,6 +86,17 @@ export function updateNode(graph: DemoGraph, nodeId: string, input: unknown): No
   if (effectiveStatus && effectiveType !== 'task') {
     throw new ValidationError('Solo los nodos de tipo task pueden tener estado')
   }
+  const rawParsed = parsed as Record<string, unknown>
+  if (effectiveType !== 'task') {
+    for (const field of ['priority', 'effort', 'assigneeId', 'boardColumnId'] as const) {
+      if (rawParsed[field] !== undefined && rawParsed[field] !== null) {
+        throw new ValidationError(`Solo los nodos de tipo task pueden tener ${field}`)
+      }
+    }
+  }
+  if (effectiveType !== 'person' && rawParsed.linkedUserId !== undefined && rawParsed.linkedUserId !== null) {
+    throw new ValidationError('Solo los nodos de tipo person pueden vincularse a un usuario')
+  }
 
   const effectiveDueDate =
     parsed!.dueDate !== undefined
@@ -110,6 +122,10 @@ export function updateNode(graph: DemoGraph, nodeId: string, input: unknown): No
       (parsed as Record<string, unknown>).assigneeId !== undefined
         ? ((parsed as Record<string, unknown>).assigneeId as Node['assigneeId'])
         : existing.assigneeId,
+    linkedUserId:
+      (parsed as Record<string, unknown>).linkedUserId !== undefined
+        ? ((parsed as Record<string, unknown>).linkedUserId as Node['linkedUserId'])
+        : existing.linkedUserId,
     boardColumnId:
       (parsed as Record<string, unknown>).boardColumnId !== undefined
         ? ((parsed as Record<string, unknown>).boardColumnId as Node['boardColumnId'])

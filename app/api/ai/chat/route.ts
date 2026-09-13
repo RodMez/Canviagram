@@ -13,39 +13,59 @@ import { handleApiError } from '@/lib/api-helpers'
 
 // System prompt con contexto del workspace
 function buildSystemPrompt(workspaceContext: {
-  nodes: Array<{ id: string; type: string; title: string; content: string | null; status: string | null }>
+  nodes: Array<{ id: string; type: string; title: string; content: string | null; status: string | null; priority?: string | null; effort?: number | null; assigneeId?: string | null }>
   edges: Array<{ id: string; sourceId: string; targetId: string; type: string; label: string | null }>
+  members: Array<{ displayName: string; email?: string | null }>
 }): string {
+  const memberById = new Map<string, string>()
   const nodeSummary = workspaceContext.nodes
-    .map((n) => `- [${n.type}] "${n.title}" (id: ${n.id}${n.status ? `, status: ${n.status}` : ''})`)
+    .map((n) => {
+      const extra = [
+        n.status ? `estado: ${n.status}` : null,
+        (n as { priority?: string | null }).priority ? `prioridad: ${(n as { priority?: string | null }).priority}` : null,
+        (n as { effort?: number | null }).effort != null ? `esfuerzo: ${(n as { effort?: number | null }).effort}` : null,
+      ]
+        .filter(Boolean)
+        .join(', ')
+      return `- [${n.type}] "${n.title}"${extra ? ` (${extra})` : ''}`
+    })
     .join('\n')
 
   const edgeSummary = workspaceContext.edges
     .map((e) => `- ${e.sourceId} --[${e.type}]--> ${e.targetId}${e.label ? ` ("${e.label}")` : ''}`)
     .join('\n')
 
+  const memberLines = workspaceContext.members.map((m) => `- ${m.displayName}`).join('\n')
+
   return `Eres el asistente de Canviagram, un canvas visual de planificación.
 Puedes crear, actualizar, borrar nodos y conexiones, y consultar el grafo completo.
+También puedes administrar responsable, prioridad y esfuerzo de las tareas.
 
 ## Estado actual del workspace
 ${workspaceContext.nodes.length === 0 ? '(vacío)' : ''}
-Nodos:
+Nodos (los IDs son solo para tool-calls, NUNCA los muestres al usuario):
 ${nodeSummary || '(ninguno)'}
 
 Conexiones:
 ${edgeSummary || '(ninguna)'}
 
+Miembros del workspace (para asignar por nombre con assigneeName):
+${memberLines || '(sin miembros)'}
+
 ## Reglas
 - Solo puedes operar sobre este workspace.
 - Si el usuario pide cambiar de workspace ("usa X"), el sistema lo redirige solo: no inventes el cambio ni operes en otro workspace.
 - Si el usuario pide algo fuera del canvas, redirige al contenido del workspace.
+- Puedes fijar/actualizar en tasks: priority (urgent, high, medium, low), effort (0-100) y responsable (assigneeName con el nombre del miembro o assigneeId). Si el nombre es ambiguo, usa listMembers y pide aclaración.
+- Al asignar una tarea se crea automáticamente el nodo persona + relación: no los dupliques a mano.
 - Conecta SIEMPRE los nodos nuevos: enlaza cada nodo creado al proyecto o concepto
   padre con un borde parent_of, y encadena tareas en secuencia con depends_on.
   Antes de crear conexiones, usa queryGraph para confirmar los IDs reales.
 - Todo nodo (en especial task) lleva una descripción útil en content: qué hay que hacer y por qué.
 - La posición de los nodos la asigna el servidor; no la decidas ni la menciones.
 - Tras crear o conectar 2+ nodos en la misma respuesta, llama a layoutGraph para que el canvas quede ordenado.
-- Valida tipos de nodo y estado antes de crear (solo "task" puede tener status).
+- Valida tipos de nodo y estado antes de crear (solo "task" puede tener status/priority/effort/responsable; solo "person" puede vincularse a un usuario).
+- En tu respuesta visible NUNCA muestres IDs largos/UUIDs: resume con títulos en negrita, estado, responsable, prioridad, esfuerzo y fecha. Información útil, no técnica.
 - Si hay errores de validación, informa al usuario y sugiere correcciones.
 - Responde en español unless the user writes in English.`
 }
@@ -116,6 +136,14 @@ export async function POST(request: Request) {
     }
 
     const graph = await getWorkspaceGraph(workspaceId, session.userId)
+    const { listMembersMeta } = await import('@/lib/workspace-admin')
+    let members: Array<{ displayName: string; email?: string | null }> = []
+    try {
+      const meta = await listMembersMeta(workspaceId, session.userId)
+      members = meta.members.map((m) => ({ displayName: m.displayName, email: m.email }))
+    } catch {
+      members = []
+    }
 
     const tools = buildTools({ workspaceId, userId: session.userId })
 
@@ -125,7 +153,7 @@ export async function POST(request: Request) {
     const result = await callWithFallback((model) =>
       streamText({
         model,
-        system: buildSystemPrompt(graph),
+        system: buildSystemPrompt({ ...graph, members } as never),
         messages,
         tools,
         stopWhen: isStepCount(10),

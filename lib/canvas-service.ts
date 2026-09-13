@@ -55,6 +55,23 @@ async function assertAssigneeForWorkspace(workspaceId: string, assigneeId: strin
   if (!membership) throw new UnprocessableError('El responsable no pertenece a este workspace')
 }
 
+async function assertLinkedUserForWorkspace(workspaceId: string, linkedUserId: string): Promise<void> {
+  const user = await db.select({ id: users.id }).from(users).where(eq(users.id, linkedUserId)).get()
+  if (!user) throw new UnprocessableError('La persona vinculada no existe')
+  const ws = await db
+    .select({ ownerId: workspaces.ownerId })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .get()
+  if (ws?.ownerId === linkedUserId) return
+  const membership = await db
+    .select({ id: workspaceMembers.id })
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, linkedUserId)))
+    .get()
+  if (!membership) throw new UnprocessableError('La persona vinculada no pertenece a este workspace')
+}
+
 async function assertBoardColumnForWorkspace(workspaceId: string, columnId: string): Promise<void> {
   const col = await db.select().from(boardColumns).where(eq(boardColumns.id, columnId)).get()
   if (!col) throw new NotFoundError('Columna no encontrada')
@@ -65,7 +82,7 @@ async function assertBoardColumnForWorkspace(workspaceId: string, columnId: stri
 
 function assertTaskOnlyFields(
   effectiveType: string,
-  parsed: { priority?: unknown; effort?: unknown; assigneeId?: unknown; boardColumnId?: unknown; status?: unknown }
+  parsed: { priority?: unknown; effort?: unknown; assigneeId?: unknown; boardColumnId?: unknown; status?: unknown; linkedUserId?: unknown }
 ): void {
   if (effectiveType !== 'task') {
     const offenders: Array<[string, unknown]> = [
@@ -78,6 +95,11 @@ function assertTaskOnlyFields(
       if (value !== undefined && value !== null) {
         throw new ValidationError(`Solo los nodos de tipo task pueden tener ${field}`)
       }
+    }
+  }
+  if (effectiveType !== 'person') {
+    if (parsed.linkedUserId !== undefined && parsed.linkedUserId !== null) {
+      throw new ValidationError('Solo los nodos de tipo person pueden vincularse a un usuario')
     }
   }
 }
@@ -126,6 +148,110 @@ export function resolveReminderFields(
 }
 
 // ============================================================
+// Persona auto-creada al asignar tareas
+// ============================================================
+
+/** Nombre para titular el nodo persona auto-creado. */
+async function getUserDisplayName(userId: string): Promise<string> {
+  const row = await db.select({ displayName: users.displayName, email: users.email }).from(users).where(eq(users.id, userId)).get()
+  return row?.displayName || row?.email || 'Persona'
+}
+
+/**
+ * Asegura nodo person vinculado al assignee + arista task --related_to--> person.
+ * Idempotente: reutiliza persona y arista existentes (no duplica en cada edit).
+ */
+export async function ensurePersonAndResponsableEdge(
+  workspaceId: string,
+  actorId: string,
+  taskId: string,
+  assigneeId: string
+): Promise<void> {
+  const existingPerson = await db
+    .select()
+    .from(nodes)
+    .where(
+      and(
+        eq(nodes.workspaceId, workspaceId),
+        eq(nodes.type, 'person'),
+        eq(nodes.linkedUserId, assigneeId),
+        isNull(nodes.deletedAt)
+      )
+    )
+    .get()
+
+  let personId = existingPerson?.id ?? null
+  if (!personId) {
+    const displayName = await getUserDisplayName(assigneeId)
+    const personPositions = await db
+      .select({ positionX: nodes.positionX, positionY: nodes.positionY })
+      .from(nodes)
+      .where(and(eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)))
+      .all()
+    const occupied = new Set(personPositions.map((n) => occupiedIndex(n.positionX, n.positionY)))
+    const [freeIndex] = findFreeSlots(occupied, 1)
+    const slot = positionForIndex(freeIndex)
+    const now = new Date()
+    const personRow = {
+      id: uuidv4(),
+      workspaceId,
+      createdBy: actorId,
+      type: 'person' as const,
+      title: displayName,
+      content: null,
+      status: null,
+      priority: null,
+      effort: null,
+      assigneeId: null,
+      linkedUserId: assigneeId,
+      boardColumnId: null,
+      boardOrder: 0,
+      dueDate: null,
+      reminderOffsetMin: null,
+      notifiedAt: null,
+      recurrenceRule: null,
+      positionX: slot.x,
+      positionY: slot.y,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    }
+    const [insertedPerson] = await db.insert(nodes).values(personRow).returning()
+    personId = insertedPerson?.id ?? personRow.id
+    publish(workspaceId, 'node:created', insertedPerson ?? personRow)
+  }
+
+  const existingEdge = await db
+    .select({ id: edges.id })
+    .from(edges)
+    .where(
+      and(
+        eq(edges.workspaceId, workspaceId),
+        eq(edges.sourceId, taskId),
+        eq(edges.targetId, personId),
+        eq(edges.type, 'related_to')
+      )
+    )
+    .get()
+  if (existingEdge) return
+
+  const edgeId = uuidv4()
+  const now = new Date()
+  const edgeRow = {
+    id: edgeId,
+    workspaceId,
+    createdBy: actorId,
+    sourceId: taskId,
+    targetId: personId,
+    type: 'related_to' as const,
+    label: 'responsable',
+    createdAt: now,
+  }
+  const [insertedEdge] = await db.insert(edges).values(edgeRow).returning()
+  publish(workspaceId, 'edge:created', insertedEdge ?? edgeRow)
+}
+
+// ============================================================
 // NODES
 // ============================================================
 
@@ -166,6 +292,9 @@ export async function createNode(workspaceId: string, userId: string, input: unk
   if (parsed!.assigneeId) {
     await assertAssigneeForWorkspace(workspaceId, parsed!.assigneeId)
   }
+  if (parsed!.linkedUserId) {
+    await assertLinkedUserForWorkspace(workspaceId, parsed!.linkedUserId)
+  }
   let boardColumnId: string | null = parsed!.boardColumnId ?? null
   let boardOrder = 0
   if (boardColumnId) {
@@ -192,6 +321,7 @@ export async function createNode(workspaceId: string, userId: string, input: unk
       priority: parsed!.priority ?? null,
       effort: parsed!.effort ?? null,
       assigneeId: parsed!.assigneeId ?? null,
+      linkedUserId: parsed!.linkedUserId ?? null,
       boardColumnId,
       boardOrder,
       dueDate: reminder.dueDate,
@@ -208,7 +338,19 @@ export async function createNode(workspaceId: string, userId: string, input: unk
 
   publish(workspaceId, 'node:created', inserted ?? { id, workspaceId, ...parsed })
 
-  return inserted ?? { id, workspaceId, createdBy: userId, ...parsed, createdAt: now, updatedAt: now, deletedAt: null }
+  // Al asignar una tarea a una persona se crea el nodo persona (si no existe)
+  // y la relación task --related_to--> person (label "responsable").
+  // Best-effort: no rompe la creación de la tarea si falla.
+  const createdTask = inserted ?? { id, workspaceId, createdBy: userId, ...parsed, createdAt: now, updatedAt: now, deletedAt: null }
+  if (parsed!.type === 'task' && parsed!.assigneeId) {
+    try {
+      await ensurePersonAndResponsableEdge(workspaceId, userId, String((createdTask as { id: string }).id), parsed!.assigneeId)
+    } catch (err) {
+      console.error('[canvas-service] ensure person edge failed', err)
+    }
+  }
+
+  return createdTask
 }
 
 export async function updateNode(
@@ -248,6 +390,9 @@ export async function updateNode(
   if (parsed!.assigneeId !== undefined && parsed!.assigneeId !== null) {
     await assertAssigneeForWorkspace(workspaceId, parsed!.assigneeId)
   }
+  if (parsed!.linkedUserId !== undefined && parsed!.linkedUserId !== null) {
+    await assertLinkedUserForWorkspace(workspaceId, parsed!.linkedUserId)
+  }
   if (parsed!.boardColumnId !== undefined && parsed!.boardColumnId !== null) {
     await assertBoardColumnForWorkspace(workspaceId, parsed!.boardColumnId)
   }
@@ -277,6 +422,7 @@ export async function updateNode(
   if (parsed!.priority !== undefined) updateData.priority = parsed!.priority
   if (parsed!.effort !== undefined) updateData.effort = parsed!.effort
   if (parsed!.assigneeId !== undefined) updateData.assigneeId = parsed!.assigneeId
+  if (parsed!.linkedUserId !== undefined) updateData.linkedUserId = parsed!.linkedUserId
   if (parsed!.boardColumnId !== undefined) updateData.boardColumnId = parsed!.boardColumnId
   if (parsed!.positionX !== undefined) updateData.positionX = parsed!.positionX
   if (parsed!.positionY !== undefined) updateData.positionY = parsed!.positionY
@@ -298,6 +444,18 @@ export async function updateNode(
     .returning()
 
   publish(workspaceId, 'node:updated', updated ?? { id: nodeId, ...parsed })
+
+  // Asignar (o reasignar) responsable asegura persona + arista (idempotente).
+  const finalType = (updated as { type?: string } | undefined)?.type ?? effectiveType
+  const finalAssignee =
+    parsed!.assigneeId !== undefined ? parsed!.assigneeId : existing.assigneeId
+  if (finalType === 'task' && finalAssignee) {
+    try {
+      await ensurePersonAndResponsableEdge(workspaceId, userId, nodeId, finalAssignee)
+    } catch (err) {
+      console.error('[canvas-service] ensure person edge failed', err)
+    }
+  }
 
   return updated
 }
@@ -348,6 +506,7 @@ export type ListNodesOptions = {
   limit?: number
   offset?: number
   assigneeId?: string
+  linkedUserId?: string
   priority?: string
   boardColumnId?: string
   sort?: NodeListSort
@@ -369,6 +528,9 @@ export async function listNodes(
   const conditions = [eq(nodes.workspaceId, workspaceId), isNull(nodes.deletedAt)]
   if (options?.assigneeId) {
     conditions.push(eq(nodes.assigneeId, options.assigneeId))
+  }
+  if (options?.linkedUserId) {
+    conditions.push(eq(nodes.linkedUserId, options.linkedUserId))
   }
   if (options?.priority) {
     conditions.push(eq(nodes.priority, options.priority as never))

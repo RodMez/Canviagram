@@ -3,7 +3,6 @@
 import { useCanvasStore } from '@/store/canvas-store'
 import { AiChatPanel, type SseStatus } from './AiChatPanel'
 import { NodeDetailPanel } from './NodeDetailPanel'
-import { resolvePanelMode } from './Toolbar'
 
 type RightPanelProps = {
   workspaceId: string
@@ -12,11 +11,13 @@ type RightPanelProps = {
   sseStatus?: SseStatus
 }
 
-// Panel contextual derecho (Diseño 12.1): colapsable vía store y conmutador
-// AI Chat ↔ Node Detail según haya un nodo seleccionado.
+// Panel contextual derecho: colapsable vía store y conmutador explícito
+// AI Chat ↔ Node Detail (iconos del Toolbar). La selección de un nodo
+// abre el tab de ajustes (auto), pero los iconos permiten forzar uno u otro.
 export function RightPanel({ workspaceId, userId, sseStatus = 'connected' }: RightPanelProps) {
   const isPanelCollapsed = useCanvasStore((s) => s.isPanelCollapsed)
   const togglePanel = useCanvasStore((s) => s.togglePanel)
+  const panelTab = useCanvasStore((s) => s.panelTab)
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
 
   // Colapsado → no renderiza (el toggle vive en el Toolbar, F3.4d).
@@ -36,8 +37,15 @@ export function RightPanel({ workspaceId, userId, sseStatus = 'connected' }: Rig
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        {resolvePanelMode(selectedNodeId) === 'node' ? (
+        {panelTab === 'node' && selectedNodeId ? (
           <NodeDetailPanel workspaceId={workspaceId} userId={userId} />
+        ) : panelTab === 'node' && !selectedNodeId ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+            <p className="text-sm font-medium">Sin nodo seleccionado</p>
+            <p className="text-xs text-muted-foreground">
+              Haz clic en un nodo del canvas o en una tarjeta del tablero para ver sus ajustes.
+            </p>
+          </div>
         ) : (
           <AiChatPanel workspaceId={workspaceId} sseStatus={sseStatus} />
         )}

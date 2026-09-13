@@ -279,6 +279,12 @@ export const nodes = sqliteTable(
     assigneeId: text('assignee_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+    // Persona vinculada (solo type==='person'): FK opcional a users para saber
+    // qué persona exacta es (como assigneeId en tareas). Null = nombre libre
+    // sin cuenta (se conserva el comportamiento actual con title).
+    linkedUserId: text('linked_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     boardColumnId: text('board_column_id').references(() => boardColumns.id, {
       onDelete: 'set null',
     }),
@@ -313,6 +319,7 @@ export const nodes = sqliteTable(
       t.boardOrder
     ),
     assigneeIdx: index('idx_nodes_assignee').on(t.assigneeId),
+    linkedUserIdx: index('idx_nodes_linked_user').on(t.linkedUserId),
   })
 )
 
@@ -561,6 +568,10 @@ export const nodesRelations = relations(nodes, ({ one, many }) => ({
   }),
   assignee: one(users, {
     fields: [nodes.assigneeId],
+    references: [users.id],
+  }),
+  linkedUser: one(users, {
+    fields: [nodes.linkedUserId],
     references: [users.id],
   }),
   boardColumn: one(boardColumns, {

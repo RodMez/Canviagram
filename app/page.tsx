@@ -1,7 +1,13 @@
+import { redirect } from 'next/navigation'
+import { getSession } from '@/lib/auth/session'
 import DemoLanding from '@/components/demo/DemoLanding'
 
-// Demo Landing pública (F4.1): página estática — sin imports de DB,
-// sin env, sin force-dynamic. El demo corre 100% en el cliente.
-export default function Home() {
+// Landing pública: si ya hay sesión, redirige a la página del usuario (/today).
+// Sin sesión: DemoLanding estática (sin DB/env, 100% cliente).
+export default async function Home() {
+  const session = await getSession()
+  if (session) {
+    redirect('/today')
+  }
   return <DemoLanding />
 }

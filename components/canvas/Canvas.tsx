@@ -78,6 +78,7 @@ function CanvasInner({
   const edges = useCanvasStore(selectEdges)
   const setNodes = useCanvasStore((s) => s.setNodes)
   const selectNode = useCanvasStore((s) => s.selectNode)
+  const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
   const applyLocalEvent = useCanvasStore((s) => s.applyLocalEvent)
   const { screenToFlowPosition, fitView } = useReactFlow()
   const isDemo = isDemoWorkspace(workspaceId)
@@ -102,7 +103,12 @@ function CanvasInner({
   }, [workspaceId, nodes.length, fitView])
 
   // Store → React Flow (vista derivada, unidireccional). Zustand es la fuente única.
-  const rfNodes = useMemo(() => storeToRfNodes(nodes, workspaceId), [nodes, workspaceId])
+  // La selección es controlada por el store para que Supr/Backspace funcionen
+  // y los updates SSE no la pierdan.
+  const rfNodes = useMemo(
+    () => storeToRfNodes(nodes, workspaceId, selectedNodeId),
+    [nodes, workspaceId, selectedNodeId]
+  )
   const rfEdges = useMemo(() => storeToRfEdges(edges, workspaceId), [edges, workspaceId])
 
   // RF → Store: escribe la posición real en el store y persiste con PATCH (debounce en F3.4d).
@@ -180,11 +186,23 @@ function CanvasInner({
   )
 
   // RF → Store: la selección la gobierna el store (selectedNodeId).
+  // Guard anti-cierre: ReactFlow re-emite selección vacía cuando la prop
+  // `nodes` cambia (ej. SSE node:updated tras editar en NodeDetailPanel).
+  // Si el nodo seleccionado sigue existiendo, se ignora el reset transitorio;
+  // la deselección explícita solo ocurre por clic en el lienzo o borrado.
   const handleSelectionChange = useCallback(
     ({ nodes: selected }: OnSelectionChangeParams) => {
-      selectNode(selected[0]?.id ?? null)
+      const nextId = selected[0]?.id ?? null
+      if (nextId) {
+        selectNode(nextId)
+        return
+      }
+      const stillExists =
+        selectedNodeId != null && nodes.some((n) => n.id === selectedNodeId)
+      if (stillExists) return
+      selectNode(null)
     },
-    [selectNode]
+    [selectNode, selectedNodeId, nodes]
   )
 
   // RF → Store: Delete/Backspace sobre nodos seleccionados (F5). El borrado es
@@ -214,7 +232,8 @@ function CanvasInner({
     [workspaceId]
   )
 
-  // Doble clic en el lienzo vacío → abre CreateNodePopup en esa posición.
+  // Clic simple en el lienzo vacío → deselecciona (única vía explícita junto
+  // al botón Cerrar y al borrado). Doble clic → abre CreateNodePopup.
   // React Flow v12 no expone onPaneDoubleClick; detectamos doble clic sobre onPaneClick.
   const handlePaneClick = useCallback(
     (event: React.MouseEvent) => {
@@ -225,9 +244,12 @@ function CanvasInner({
         lastPaneClickRef.current = null
         const screenPos = { x: event.clientX, y: event.clientY }
         setCreatePopup({ screenPos, flowPos: screenToFlowPosition(screenPos) })
+        return
       }
+      // Clic simple: deselección explícita (no la hace el guard de selección).
+      selectNode(null)
     },
-    [screenToFlowPosition]
+    [screenToFlowPosition, selectNode]
   )
 
   // Botón + del Toolbar → abre el MISMO CreateNodePopup en el centro del viewport.

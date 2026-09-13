@@ -30,6 +30,14 @@ const boardColumnIdSchema = z
   .optional()
   .nullable()
 
+const linkedUserIdSchema = z
+  .string()
+  .trim()
+  .min(1, 'La persona vinculada no es válida')
+  .max(100, 'La persona vinculada no es válida')
+  .optional()
+  .nullable()
+
 function assertTaskOnly(
   data: {
     type?: string
@@ -38,6 +46,7 @@ function assertTaskOnly(
     effort?: number | null
     assigneeId?: string | null
     boardColumnId?: string | null
+    linkedUserId?: string | null
   },
   ctx: z.RefinementCtx
 ) {
@@ -53,6 +62,17 @@ function assertTaskOnly(
           message: 'Solo los nodos de tipo task pueden tener este campo',
         })
       }
+    }
+  }
+  // Solo person puede portar linkedUserId (vínculo a usuario del workspace).
+  // Null/libre se permite en person; en otros tipos se rechaza si viene con valor.
+  if (data.type && data.type !== 'person') {
+    if (data.linkedUserId !== undefined && data.linkedUserId !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['linkedUserId'],
+        message: 'Solo los nodos de tipo person pueden vincularse a un usuario',
+      })
     }
   }
 }
@@ -104,6 +124,7 @@ export const createNodeSchema = z
     effort: effortSchema,
     assigneeId: assigneeIdSchema,
     boardColumnId: boardColumnIdSchema,
+    linkedUserId: linkedUserIdSchema,
   })
   .superRefine((data, ctx) => {
     if (data.status && data.type !== 'task') {
@@ -114,6 +135,13 @@ export const createNodeSchema = z
       })
     }
     assertTaskOnly(data, ctx)
+    if (data.linkedUserId && data.type !== 'person') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['linkedUserId'],
+        message: 'Solo los nodos de tipo person pueden vincularse a un usuario',
+      })
+    }
     if (data.recurrenceRule && !data.dueDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -172,6 +200,7 @@ export const updateNodeSchema = z
     effort: effortSchema,
     assigneeId: assigneeIdSchema,
     boardColumnId: boardColumnIdSchema,
+    linkedUserId: linkedUserIdSchema,
   })
   .superRefine((data, ctx) => {
     if (data.status && data.type && data.type !== 'task') {
@@ -182,6 +211,13 @@ export const updateNodeSchema = z
       })
     }
     assertTaskOnly(data, ctx)
+    if (data.linkedUserId && data.type && data.type !== 'person') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['linkedUserId'],
+        message: 'Solo los nodos de tipo person pueden vincularse a un usuario',
+      })
+    }
     if (data.recurrenceRule && !data.dueDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

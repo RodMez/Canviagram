@@ -28,6 +28,7 @@ function makeTask(overrides: Partial<Node> = {}): Node {
     priority: null,
     effort: null,
     assigneeId: null,
+    linkedUserId: null,
     boardColumnId: 'c1',
     boardOrder: 1000,
     positionX: 0,

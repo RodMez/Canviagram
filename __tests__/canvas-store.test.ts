@@ -18,6 +18,7 @@ function makeNode(overrides: Partial<Node> = {}): Node {
     priority: null,
     effort: null,
     assigneeId: null,
+    linkedUserId: null,
     boardColumnId: null,
     boardOrder: 0,
     dueDate: null,

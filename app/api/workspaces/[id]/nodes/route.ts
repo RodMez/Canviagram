@@ -20,6 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const limit = parseQueryInt(searchParams.get('limit'), 50)
     const offset = parseQueryInt(searchParams.get('offset'), 0)
     const assigneeId = searchParams.get('assigneeId') ?? searchParams.get('assignee') ?? undefined
+    const linkedUserId = searchParams.get('linkedUserId') ?? undefined
     const priority = searchParams.get('priority') ?? undefined
     const boardColumnId = searchParams.get('boardColumnId') ?? undefined
     const rawSort = searchParams.get('sort') ?? undefined
@@ -39,6 +40,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       limit,
       offset,
       assigneeId,
+      linkedUserId,
       priority,
       boardColumnId,
       sort,
@@ -47,6 +49,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const filterConditions = [eq(nodes.workspaceId, id), isNull(nodes.deletedAt)]
     if (assigneeId) filterConditions.push(eq(nodes.assigneeId, assigneeId))
+    if (linkedUserId) filterConditions.push(eq(nodes.linkedUserId, linkedUserId))
     if (priority) filterConditions.push(eq(nodes.priority, priority as never))
     if (boardColumnId) filterConditions.push(eq(nodes.boardColumnId, boardColumnId))
     const [countRow] = await db

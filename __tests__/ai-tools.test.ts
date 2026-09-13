@@ -22,7 +22,7 @@ describe('AI tools', () => {
 
   it('serializeNode/Edge extraen solo campos relevantes', () => {
     const node = serializeNode({ id: 'n1', type: 'task', title: 'T', content: 'c', status: 'todo', positionX: 10, positionY: 20, workspaceId: 'ws-1', createdAt: new Date() })
-    expect(node).toEqual({ id: 'n1', type: 'task', title: 'T', content: 'c', status: 'todo', positionX: 10, positionY: 20, dueDate: null, reminderOffsetMin: null })
+    expect(node).toEqual({ id: 'n1', type: 'task', title: 'T', content: 'c', status: 'todo', priority: null, effort: null, assigneeId: null, linkedUserId: null, boardColumnId: null, positionX: 10, positionY: 20, dueDate: null, reminderOffsetMin: null })
     expect(node).not.toHaveProperty('workspaceId')
     const edge = serializeEdge({ id: 'e1', sourceId: 'n1', targetId: 'n2', type: 'related_to', label: 'test', workspaceId: 'ws-1', createdAt: new Date() })
     expect(edge).toEqual({ id: 'e1', sourceId: 'n1', targetId: 'n2', type: 'related_to', label: 'test' })
@@ -32,7 +32,7 @@ describe('AI tools', () => {
   it('createNode llama canvasService.createNode con args correctos', async () => {
     cs.createNode.mockResolvedValue({ id: 'n1', type: 'task', title: 'Hacer deploy', content: null, status: 'todo', positionX: 0, positionY: 0 } as any)
     const result = await buildTools(ctx).createNode.execute!({ type: 'task', title: 'Hacer deploy', status: 'todo' }, opts)
-    expect(cs.createNode).toHaveBeenCalledWith('ws-1', 'user-1', { type: 'task', title: 'Hacer deploy', status: 'todo' })
+    expect(cs.createNode).toHaveBeenCalledWith('ws-1', 'user-1', { type: 'task', title: 'Hacer deploy', status: 'todo', assigneeId: null, linkedUserId: null })
     expect(result).toHaveProperty('id', 'n1')
   })
 

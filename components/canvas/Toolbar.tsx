@@ -9,6 +9,8 @@ import {
   ChevronDown,
   Settings,
   Shuffle,
+  Bot,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { useCanvasStore } from '@/store/canvas-store'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
@@ -66,6 +68,8 @@ export function Toolbar({
 }: ToolbarProps) {
   const isPanelCollapsed = useCanvasStore((s) => s.isPanelCollapsed)
   const togglePanel = useCanvasStore((s) => s.togglePanel)
+  const panelTab = useCanvasStore((s) => s.panelTab)
+  const setPanelTab = useCanvasStore((s) => s.setPanelTab)
 
   const [workspaces, setWorkspaces] = useState<WorkspaceMenuItem[]>([])
   const [wsMenuOpen, setWsMenuOpen] = useState(false)
@@ -221,10 +225,11 @@ export function Toolbar({
         </button>
       ) : null}
 
-      {/* Botón colapsar panel */}
+      {/* Botón colapsar/expandir panel (se conserva) */}
       <button
         onClick={togglePanel}
         aria-label={isPanelCollapsed ? 'Expandir panel' : 'Colapsar panel'}
+        title={isPanelCollapsed ? 'Expandir panel' : 'Colapsar panel'}
         className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted active:bg-muted/80"
       >
         {isPanelCollapsed ? (
@@ -233,6 +238,40 @@ export function Toolbar({
           <PanelRightClose className="h-4 w-4" />
         )}
       </button>
+
+      {/* Cambio rápido IA ↔ Ajustes del nodo (se conserva el de expandir) */}
+      <div role="group" aria-label="Panel lateral" className="flex items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => setPanelTab('ai')}
+          aria-label="Abrir asistente IA"
+          title="Asistente IA"
+          aria-pressed={panelTab === 'ai' && !isPanelCollapsed}
+          className={cn(
+            'flex h-11 w-11 items-center justify-center rounded-lg transition-colors hover:bg-muted active:bg-muted/80',
+            panelTab === 'ai' && !isPanelCollapsed
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground'
+          )}
+        >
+          <Bot className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setPanelTab('node')}
+          aria-label="Abrir ajustes del nodo"
+          title="Ajustes del nodo"
+          aria-pressed={panelTab === 'node' && !isPanelCollapsed}
+          className={cn(
+            'flex h-11 w-11 items-center justify-center rounded-lg transition-colors hover:bg-muted active:bg-muted/80',
+            panelTab === 'node' && !isPanelCollapsed
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground'
+          )}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+        </button>
+      </div>
 
       {/* Campana de notificaciones (Fase 3) */}
       {workspaceId ? <NotificationBell workspaceId={workspaceId} /> : null}

@@ -57,6 +57,9 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
   const [priority, setPriority] = useState<NodePriority | null>(node?.priority ?? null)
   const [effort, setEffort] = useState<string>(node?.effort == null ? '' : String(node?.effort))
   const [assigneeId, setAssigneeId] = useState<string | null>(node?.assigneeId ?? null)
+  const [linkedUserId, setLinkedUserId] = useState<string | null>(
+    (node as { linkedUserId?: string | null } | null)?.linkedUserId ?? null
+  )
   const [boardColumnId, setBoardColumnId] = useState<string | null>(node?.boardColumnId ?? null)
   const [dueDate, setDueDate] = useState<number | null>(getDueDateMs(node?.dueDate))
   const [reminderOffsetMin, setReminderOffsetMin] = useState<number | null>(node?.reminderOffsetMin ?? null)
@@ -86,6 +89,7 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
     setPriority(node?.priority ?? null)
     setEffort(node?.effort == null ? '' : String(node?.effort))
     setAssigneeId(node?.assigneeId ?? null)
+    setLinkedUserId((node as { linkedUserId?: string | null } | null)?.linkedUserId ?? null)
     setBoardColumnId(node?.boardColumnId ?? null)
     setDueDate(getDueDateMs(node?.dueDate))
     setReminderOffsetMin(node?.reminderOffsetMin ?? null)
@@ -183,9 +187,17 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
                   effort: null,
                   assigneeId: null,
                   boardColumnId: null,
+                  // Si sale de person, desvincula el usuario (el server también valida).
+                  ...(type === 'person' ? { linkedUserId: null } : {}),
                 })
+                if (type === 'person') setLinkedUserId(null)
               } else {
-                save.trigger({ type: nextType })
+                save.trigger({
+                  type: nextType,
+                  // Si venía de person, limpia el vínculo para no arrastrarlo.
+                  ...(type === 'person' ? { linkedUserId: null } : {}),
+                })
+                if (type === 'person') setLinkedUserId(null)
               }
             }}
             onBlur={() => save.flush()}
@@ -205,6 +217,42 @@ export function NodeDetailPanel({ workspaceId, userId }: NodeDetailPanelProps) {
             className={fieldCls}
           />
         </label>
+
+        {type === 'person' && (
+          <label className="block">
+            <span className="text-xs font-medium text-muted-foreground">Usuario vinculado</span>
+            <select
+              value={linkedUserId ?? ''}
+              onChange={(e) => {
+                const next = e.target.value || null
+                setLinkedUserId(next)
+                // Autocompletar + libre: si se vincula y el título está vacío,
+                // se rellena con el displayName pero sigue siendo editable.
+                const member = members.find((m) => m.userId === next)
+                if (next && member && !title.trim()) {
+                  setTitle(member.displayName)
+                  save.trigger({ linkedUserId: next, title: member.displayName })
+                } else {
+                  save.trigger({ linkedUserId: next })
+                }
+              }}
+              onBlur={() => save.flush()}
+              className={fieldCls}
+            >
+              <option value="">Nombre libre (sin cuenta)</option>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.displayName}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              {linkedUserId
+                ? 'Vinculada a un usuario del workspace — el título se puede cambiar libremente.'
+                : 'Sin vincular: vale cualquier nombre para personas sin cuenta.'}
+            </span>
+          </label>
+        )}
 
         {isTask && (
           <>

@@ -230,6 +230,7 @@ function restoreInOrder(text: string, token: string, count: number, make: (index
 // - **bold**/__bold__ → <b>, *it*/_it_ → <i>, ~~t~~ → <s>, ||t|| → <tg-spoiler>
 // - `code` → <code>, ```block``` → <pre>, [t](https://...) → <a>
 // - "# tit" → <b>tit</b>, "> cita" → <blockquote>, listas → "• ", "---" → ""
+// - Tablas Markdown "| a | b |" → "• a — b" (las filas |---|---| se eliminan)
 // - Raw HTML no permitido se filtra (XSS); <a> solo http/https.
 // - Fallback: escapeHtml (nunca lanza).
 export function formatForTelegram(raw: string): string {
@@ -265,8 +266,21 @@ export function formatForTelegram(raw: string): string {
       .replace(/~~([^~]+)~~/g, '<s>$1</s>')
       .replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>')
 
-    // 4. Bloques por línea: headings, quotes, listas, reglas.
+    // 4. Bloques por línea: headings, quotes, listas, reglas, tablas.
     const lines = working.split('\n').map((line) => {
+      const trimmed = line.trim()
+      // Tablas Markdown → lista útil (el LLM a veces las usa aunque se le pida evitarlas).
+      // Fila separadora |---|---| se elimina; filas de datos se unen con " — ".
+      if (/^\|.*\|\s*$/.test(trimmed)) {
+        const cells = trimmed
+          .replace(/^\||\|$/g, '')
+          .split('|')
+          .map((c) => c.trim())
+          .filter(Boolean)
+        if (cells.length === 0) return ''
+        if (cells.every((c) => /^:?-+:?$/.test(c))) return ''
+        return `• ${cells.join(' — ')}`
+      }
       const heading = line.match(/^#{1,6}\s+(.+)$/)
       if (heading) return `<b>${heading[1]}</b>`
       const quote = line.match(/^>\s?(.*)$/)

@@ -15,6 +15,8 @@ type CanvasState = {
   // UI state (persisted in localStorage)
   selectedNodeId: string | null
   isPanelCollapsed: boolean
+  /** Tab explícito del panel derecho: IA o ajustes del nodo. */
+  panelTab: 'ai' | 'node'
   demoMode: boolean
 
   // Actions
@@ -26,6 +28,7 @@ type CanvasState = {
   applyLocalEvent: (payload: ApplyEventPayload) => void
   selectNode: (nodeId: string | null) => void
   togglePanel: () => void
+  setPanelTab: (tab: 'ai' | 'node') => void
   setDemoMode: (enabled: boolean) => void
 }
 
@@ -51,6 +54,26 @@ function writePanelCollapsed(collapsed: boolean): void {
   }
 }
 
+export type PanelTab = 'ai' | 'node'
+
+function readPanelTab(): PanelTab {
+  if (typeof window === 'undefined') return 'ai'
+  try {
+    return localStorage.getItem('canviagram:panel-tab') === 'node' ? 'node' : 'ai'
+  } catch {
+    return 'ai'
+  }
+}
+
+function writePanelTab(tab: PanelTab): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem('canviagram:panel-tab', tab)
+  } catch {
+    // ignore
+  }
+}
+
 // ============================================================
 // Store
 // ============================================================
@@ -61,6 +84,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   edges: [],
   selectedNodeId: null,
   isPanelCollapsed: readPanelCollapsed(),
+  panelTab: readPanelTab(),
   demoMode: false,
 
   // Actions
@@ -90,12 +114,33 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set(applyCanvasEvent(get(), payload))
   },
 
-  selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
+  selectNode: (nodeId) => {
+    // Auto + manual: seleccionar un nodo abre el tab de ajustes;
+    // deseleccionar no fuerza el tab (los iconos mandan).
+    if (nodeId) {
+      writePanelTab('node')
+      set({ selectedNodeId: nodeId, panelTab: 'node', isPanelCollapsed: false })
+      try {
+        localStorage.setItem('canviagram:panel-collapsed', '0')
+      } catch {
+        // ignore
+      }
+    } else {
+      set({ selectedNodeId: null })
+    }
+  },
 
   togglePanel: () => {
     const next = !get().isPanelCollapsed
     writePanelCollapsed(next)
     set({ isPanelCollapsed: next })
+  },
+
+  setPanelTab: (tab) => {
+    writePanelTab(tab)
+    // Elegir tab explícitamente expande el panel.
+    set({ panelTab: tab, isPanelCollapsed: false })
+    writePanelCollapsed(false)
   },
 
   setDemoMode: (enabled) => set({ demoMode: enabled }),
