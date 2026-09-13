@@ -35,27 +35,6 @@ type Invitation = {
   expired: boolean
 }
 
-type TelegramLink = {
-  code: string
-  expiresAt: string
-  ttlSeconds: number
-  workspaceId: string
-}
-
-type TelegramStatus = {
-  enabled: boolean
-  botUsername: string | null
-  webhook: {
-    ok: boolean
-    url: string
-    pendingUpdateCount: number
-    lastError: string | null
-    lastErrorDate: string | null
-  } | null
-  chats: Array<{ chatId: string; tgUserId: string; lastActivityAt: string | null }>
-  canAdmin: boolean
-}
-
 type Feedback = { kind: 'error' | 'ok' | 'neutral'; text: string }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -67,7 +46,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const INVITE_ROLES = ['admin', 'member', 'viewer'] as const
 
-type Tab = 'general' | 'members' | 'telegram' | 'danger'
+type Tab = 'general' | 'members' | 'danger'
 
 function formatDate(value: string | null): string {
   if (!value) return '—'
@@ -109,12 +88,6 @@ export default function SettingsClient({
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<string>('member')
   const [inviting, setInviting] = useState(false)
-
-  // Telegram
-  const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null)
-  const [telegramMsg, setTelegramMsg] = useState<Feedback | null>(null)
-  const [telegramBusy, setTelegramBusy] = useState(false)
-  const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null)
 
   // Peligro
   const [confirmSlug, setConfirmSlug] = useState('')
@@ -264,94 +237,6 @@ export default function SettingsClient({
   }
 
   // ============================================================
-  // Telegram
-  // ============================================================
-
-  async function generateTelegramCode() {
-    setTelegramBusy(true)
-    setTelegramMsg(null)
-    try {
-      const { res, data } = await apiFetch(`/api/workspaces/${workspace.id}/telegram/link`, {
-        method: 'POST',
-      })
-      if (res.ok) {
-        setTelegramLink(data as unknown as TelegramLink)
-      } else if (res.status === 503) {
-        // Nunca filtrar config interna: aviso genérico
-        setTelegramMsg({ kind: 'neutral', text: 'Telegram no está habilitado en este despliegue' })
-      } else {
-        setTelegramMsg({ kind: 'neutral', text: data.error ?? 'Error al generar el código' })
-      }
-    } catch {
-      setTelegramMsg({ kind: 'neutral', text: 'Error de red' })
-    } finally {
-      setTelegramBusy(false)
-    }
-  }
-
-  async function unlinkTelegram() {
-    setTelegramBusy(true)
-    setTelegramMsg(null)
-    try {
-      const { res } = await apiFetch(`/api/workspaces/${workspace.id}/telegram/link`, {
-        method: 'DELETE',
-      })
-      if (res.status === 204) {
-        setTelegramLink(null)
-      } else if (res.status === 503) {
-        setTelegramMsg({ kind: 'neutral', text: 'Telegram no está habilitado en este despliegue' })
-      }
-    } catch {
-      setTelegramMsg({ kind: 'neutral', text: 'Error de red' })
-    } finally {
-      setTelegramBusy(false)
-    }
-  }
-
-  // Estado visible del vínculo (Fase 1): webhook + chats + último error del bot.
-  const loadTelegramStatus = useCallback(async () => {
-    try {
-      const { res, data } = await apiFetch(`/api/workspaces/${workspace.id}/telegram/status`)
-      if (res.ok) setTelegramStatus(data as unknown as TelegramStatus)
-    } catch {
-      // silencioso: el estado se reintenta al abrir la pestaña
-    }
-  }, [apiFetch, workspace.id])
-
-  useEffect(() => {
-    if (tab === 'telegram') loadTelegramStatus()
-  }, [tab, loadTelegramStatus])
-
-  async function testTelegramBot() {
-    setTelegramBusy(true)
-    setTelegramMsg(null)
-    try {
-      const { res, data } = await apiFetch(`/api/workspaces/${workspace.id}/telegram/status`, {
-        method: 'POST',
-      })
-      if (res.ok) {
-        const body = data as unknown as { webhook: { ok: boolean; lastError: string | null }; testSentTo: number }
-        setTelegramMsg({
-          kind: body.webhook.ok ? 'ok' : 'error',
-          text:
-            body.webhook.ok && body.testSentTo > 0
-              ? `Bot funcionando — mensaje de prueba enviado a ${body.testSentTo} chat(s)`
-              : body.webhook.ok
-                ? 'Bot conectado (sin chats vinculados a este workspace como activo)'
-                : `Fallo de webhook: ${body.webhook.lastError ?? 'desconocido'}`,
-        })
-        await loadTelegramStatus()
-      } else {
-        setTelegramMsg({ kind: 'neutral', text: data.error ?? 'Error al probar el bot' })
-      }
-    } catch {
-      setTelegramMsg({ kind: 'neutral', text: 'Error de red' })
-    } finally {
-      setTelegramBusy(false)
-    }
-  }
-
-  // ============================================================
   // Peligro (solo owner)
   // ============================================================
 
@@ -385,7 +270,6 @@ export default function SettingsClient({
   const tabs: { id: Tab; label: string }[] = [
     { id: 'general', label: 'General' },
     { id: 'members', label: 'Miembros' },
-    { id: 'telegram', label: 'Telegram' },
     // Peligro: solo visible para el owner
     ...(isOwner ? [{ id: 'danger' as Tab, label: 'Peligro' }] : []),
   ]
@@ -650,146 +534,7 @@ export default function SettingsClient({
             </section>
           ) : null}
 
-          {/* ============ TELEGRAM ============ */}
-          {tab === 'telegram' ? (
-            <section className="space-y-4">
-              <div>
-                <h2 className="text-base font-semibold">Telegram</h2>
-                <p className="text-sm text-zinc-500">
-                  Vincula tu bot de Telegram con tu cuenta para trabajar desde el chat y recibir
-                  notificaciones. Un mismo chat puede cambiar de workspace con{' '}
-                  <code className="rounded bg-muted px-1 py-0.5">/lista</code> y{' '}
-                  <code className="rounded bg-muted px-1 py-0.5">/usar &lt;slug&gt;</code>.
-                </p>
-              </div>
-
-              {telegramMsg ? (
-                <p
-                  role={telegramMsg.kind === 'error' ? 'alert' : 'status'}
-                  className={`text-sm ${
-                    telegramMsg.kind === 'error'
-                      ? 'text-red-600'
-                      : telegramMsg.kind === 'neutral'
-                        ? 'text-zinc-500'
-                        : 'text-green-600'
-                  }`}
-                >
-                  {telegramMsg.text}
-                </p>
-              ) : null}
-
-              {/* Estado visible del vínculo (Fase 1) */}
-              <div className="space-y-3 rounded-lg border border-border p-4">
-                <h3 className="text-sm font-semibold">Estado del bot</h3>
-                {telegramStatus === null ? (
-                  <p className="text-sm text-zinc-500">Consultando…</p>
-                ) : !telegramStatus.enabled ? (
-                  <p className="text-sm text-zinc-500">
-                    Telegram no está habilitado en este despliegue (falta configuración del bot).
-                  </p>
-                ) : (
-                  <>
-                    <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                      <div>
-                        <dt className="text-xs font-medium text-zinc-500">Bot</dt>
-                        <dd className="font-medium">@{telegramStatus.botUsername ?? '—'}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs font-medium text-zinc-500">Webhook</dt>
-                        <dd>
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
-                              telegramStatus.webhook?.ok
-                                ? 'bg-emerald-500/15 text-emerald-600'
-                                : 'bg-red-500/15 text-red-600'
-                            }`}
-                          >
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${
-                                telegramStatus.webhook?.ok ? 'bg-emerald-500' : 'bg-red-500'
-                              }`}
-                            />
-                            {telegramStatus.webhook?.ok ? 'Conectado' : 'Desconectado'}
-                          </span>
-                        </dd>
-                      </div>
-                      {telegramStatus.webhook?.lastError ? (
-                        <div className="sm:col-span-2">
-                          <dt className="text-xs font-medium text-zinc-500">Último error del bot</dt>
-                          <dd className="text-sm text-red-600">
-                            {telegramStatus.webhook.lastError}
-                            {telegramStatus.webhook.lastErrorDate
-                              ? ` (${formatDate(telegramStatus.webhook.lastErrorDate)})`
-                              : null}
-                          </dd>
-                        </div>
-                      ) : null}
-                      <div>
-                        <dt className="text-xs font-medium text-zinc-500">Chats vinculados (activos aquí)</dt>
-                        <dd className="font-medium">{telegramStatus.chats.length}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs font-medium text-zinc-500">Actualizaciones pendientes</dt>
-                        <dd className="font-medium">{telegramStatus.webhook?.pendingUpdateCount ?? 0}</dd>
-                      </div>
-                    </dl>
-
-                    {telegramStatus.chats.length > 0 ? (
-                      <ul className="divide-y divide-border rounded-md border border-border text-sm">
-                        {telegramStatus.chats.map((c) => (
-                          <li key={`${c.chatId}:${c.tgUserId}`} className="flex items-center justify-between px-3 py-2">
-                            <span className="font-mono text-xs">{c.chatId}</span>
-                            <span className="text-xs text-zinc-500">
-                              última actividad {formatDate(c.lastActivityAt)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-
-                    {telegramStatus.canAdmin ? (
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" onClick={testTelegramBot} disabled={telegramBusy} className="h-11">
-                          {telegramBusy ? 'Probando…' : 'Probar bot'}
-                        </Button>
-                        <span className="text-xs text-zinc-500">
-                          Envía un mensaje de prueba a los chats vinculados.
-                        </span>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </div>
-
-              {canAdmin ? (
-                telegramLink ? (
-                  <div className="space-y-3 rounded-lg border border-border p-4">
-                    <div className="rounded-md bg-muted/50 px-3 py-2 font-mono text-lg tracking-widest">
-                      {telegramLink.code}
-                    </div>
-                    <p className="text-sm text-zinc-600">
-                      Envía <code className="rounded bg-muted px-1 py-0.5">/link {telegramLink.code}</code> a tu
-                      bot de Telegram desde tu cuenta personal.
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      El código expira el {formatDate(telegramLink.expiresAt)} ({telegramLink.ttlSeconds}s).
-                    </p>
-                    <Button variant="outline" onClick={unlinkTelegram} disabled={telegramBusy} className="h-11">
-                      Desvincular
-                    </Button>
-                  </div>
-                ) : (
-                  <Button onClick={generateTelegramCode} disabled={telegramBusy} className="h-11">
-                    {telegramBusy ? 'Generando...' : 'Generar código'}
-                  </Button>
-                )
-              ) : (
-                <p className="text-sm text-zinc-500">
-                  Telegram no está habilitado en este despliegue.
-                </p>
-              )}
-            </section>
-          ) : null}
+          {/* Telegram vive ahora a nivel cuenta: menú usuario → Telegram (/settings/telegram). */}
 
           {/* ============ PELIGRO (solo owner) ============ */}
           {tab === 'danger' && isOwner ? (

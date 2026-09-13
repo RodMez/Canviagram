@@ -7,7 +7,7 @@ import { sendInvitation } from '@/lib/email/brevo'
 import { hashToken } from '@/lib/auth/tokens'
 import { ConflictError, ValidationError, NotFoundError, ForbiddenError, GoneError } from '@/lib/errors'
 import { updateWorkspaceSchema, inviteSchema, updateMemberRoleSchema } from '@/lib/validators/workspace'
-import { deleteBindingsByWorkspace } from '@/lib/telegram/chats'
+import { resetActiveWorkspacesByWorkspace } from '@/lib/telegram/chats'
 
 export const INVITE_TTL_DAYS = 7
 
@@ -598,10 +598,12 @@ export async function acceptInvitation(
 // Unlink Telegram
 // ============================================================
 
+// @deprecated El vínculo es global (cuenta). Esto solo limpia el workspace
+// activo sin borrar la cuenta (paridad con DELETE legacy por workspace).
 export async function unlinkTelegram(
   workspaceId: string,
   userId: string
 ): Promise<void> {
   await assertCanAdmin(workspaceId, userId)
-  await deleteBindingsByWorkspace(workspaceId)
+  await resetActiveWorkspacesByWorkspace(workspaceId)
 }

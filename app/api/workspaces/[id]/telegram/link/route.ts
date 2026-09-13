@@ -6,8 +6,12 @@ import { getSession } from '@/lib/auth/session'
 import { assertCanAdmin } from '@/lib/auth/workspace-access'
 import { isTelegramEnabled, LINK_CODE_TTL_SECONDS } from '@/lib/telegram/config'
 import { createLinkCode } from '@/lib/telegram/link-store'
-import { deleteBindingsByWorkspace } from '@/lib/telegram/chats'
+import { resetActiveWorkspacesByWorkspace } from '@/lib/telegram/chats'
 import { handleApiError } from '@/lib/api-helpers'
+// @deprecated Ruta legacy por workspace. La vinculación es global (cuenta):
+// usar POST/DELETE /api/telegram/link. Este POST equivale al global con
+// { workspaceId: id } como activo inicial; el DELETE solo limpia el activo
+// (no borra la cuenta global).
 
 export async function POST(
   _request: Request,
@@ -63,7 +67,7 @@ export async function DELETE(
       )
     }
 
-    await deleteBindingsByWorkspace(id)
+    await resetActiveWorkspacesByWorkspace(id)
 
     return new NextResponse(null, { status: 204 })
   } catch (error) {

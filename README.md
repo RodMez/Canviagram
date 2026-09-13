@@ -71,7 +71,7 @@ curl -X POST https://xxxx.ngrok-free.app/api/telegram/webhook \
   -d '{"update_id":1,"message":{"message_id":1,"date":0,"chat":{"id":111,"type":"private","first_name":"T"},"from":{"id":222,"is_bot":false,"first_name":"T"},"text":"/start"}}'
 ```
 
-Flujo completo: genera un código en Ajustes → Telegram (endpoint `POST /api/workspaces/:id/telegram/link`), envíalo al bot con `/link <código>` y luego manda un mensaje normal para crear nodos con IA.
+Flujo completo: genera un código en tu cuenta → Telegram (`/settings/telegram`, endpoint `POST /api/telegram/link`), envíalo al bot con `/link <código>` (una sola vez para todos tus workspaces) y luego manda un mensaje normal para crear nodos con IA. Cambia de workspace con `/lista`, `/usar NOMBRE` o escribiendo `usa <nombre>` en el bot o en el chat web, sin revincular.
 
 ## Administración (F5.5)
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { CalendarDays, FolderKanban, LogOut, Settings2 } from 'lucide-react'
+import { CalendarDays, FolderKanban, LogOut, Send, Settings2 } from 'lucide-react'
 import { useHeaderActions } from './header-actions-context'
 
 // ============================================================
@@ -113,6 +113,15 @@ function UserMenu({
           >
             <FolderKanban className="h-4 w-4" />
             Workspaces
+          </Link>
+          <Link
+            href="/settings/telegram"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="mt-1 flex items-center gap-2 rounded px-3 py-2 text-sm hover:bg-muted"
+          >
+            <Send className="h-4 w-4" />
+            Telegram
           </Link>
           {isAdmin ? (
             <Link
