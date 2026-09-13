@@ -8,6 +8,7 @@ import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
 import { isAIEnabled, callWithFallback } from '@/lib/ai/provider'
 import { buildTools } from '@/lib/ai/tools'
 import { getWorkspaceGraph } from '@/lib/canvas-service'
+import { extractSwitchQuery, resolveSwitchTarget } from '@/lib/workspace/switch'
 import { handleApiError } from '@/lib/api-helpers'
 
 // System prompt con contexto del workspace
@@ -36,6 +37,7 @@ ${edgeSummary || '(ninguna)'}
 
 ## Reglas
 - Solo puedes operar sobre este workspace.
+- Si el usuario pide cambiar de workspace ("usa X"), el sistema lo redirige solo: no inventes el cambio ni operes en otro workspace.
 - Si el usuario pide algo fuera del canvas, redirige al contenido del workspace.
 - Conecta SIEMPRE los nodos nuevos: enlaza cada nodo creado al proyecto o concepto
   padre con un borde parent_of, y encadena tareas en secuencia con depends_on.
@@ -74,6 +76,37 @@ export async function POST(request: Request) {
     }
 
     await assertWorkspaceAccess(workspaceId, session.userId, 'viewer')
+
+    // Paridad con el bot: cambio de workspace por lenguaje natural ANTES de
+    // todo lo costoso (sin LLM, sin grafo). "usa X" con 1 match responde
+    // { switch } para que el cliente navegue; N matches devuelve opciones;
+    // 0 matches cae al LLM normal. Historiales separados por workspace.
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    const switchQuery = extractSwitchQuery(
+      typeof lastUser?.content === 'string' ? lastUser.content : ''
+    )
+    if (switchQuery) {
+      const target = await resolveSwitchTarget(session.userId, switchQuery)
+      if (target.kind === 'single') {
+        return NextResponse.json({
+          switch: {
+            id: target.workspace.id,
+            name: target.workspace.name,
+            slug: target.workspace.slug,
+            alreadyActive: target.workspace.id === workspaceId,
+          },
+        })
+      }
+      if (target.kind === 'multi') {
+        return NextResponse.json({
+          switchOptions: {
+            query: target.query,
+            matches: target.matches.map((w) => ({ id: w.id, name: w.name, slug: w.slug })),
+          },
+        })
+      }
+      // 'none' => fallthrough al LLM. 'empty' => fallthrough.
+    }
 
     if (!isAIEnabled()) {
       return NextResponse.json(

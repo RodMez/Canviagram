@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { isStaticToolUIPart, getStaticToolName, type UIMessage } from 'ai'
 import { Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -133,6 +134,7 @@ function dispatchLayoutGraphResult(output: unknown, dispatch: (event: ApplyEvent
 // Modo demo (F4.1): endpoint /api/ai/chat-demo, body con el grafo del store
 // (demoGraphToPayload) y tool-results aplicados localmente vía applyLocalEvent.
 export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPanelProps) {
+  const router = useRouter()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [status, setStatus] = useState<'idle' | 'streaming' | 'error'>('idle')
@@ -256,6 +258,42 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
         throw new Error(`Chat falló (${res.status})`)
       }
 
+      // Paridad con el bot: el server puede responder JSON { switch } /
+      // { switchOptions } en vez de stream (cambio de workspace por NL).
+      const contentType = res.headers.get('content-type') ?? ''
+      if (!isDemo && contentType.includes('application/json')) {
+        const data = (await res.json()) as {
+          switch?: { id: string; name: string; slug: string; alreadyActive?: boolean }
+          switchOptions?: { query: string; matches: { id: string; name: string; slug: string }[] }
+        }
+        if (data.switch) {
+          if (data.switch.alreadyActive) {
+            const assistantMsg: ChatMessage = { role: 'assistant', content: `Ya estás en ${data.switch.name}.` }
+            setMessages((prev) => [...prev, assistantMsg])
+            await persistTurn(userMsg, assistantMsg)
+            setStatus('idle')
+            return
+          }
+          const assistantMsg: ChatMessage = { role: 'assistant', content: `Cambiando a ${data.switch.name}…` }
+          setMessages((prev) => [...prev, assistantMsg])
+          await persistTurn(userMsg, assistantMsg)
+          setStatus('idle')
+          router.push(`/w/${data.switch.slug}`)
+          return
+        }
+        if (data.switchOptions) {
+          const names = data.switchOptions.matches.map((m) => m.name).join(', ')
+          const assistantMsg: ChatMessage = {
+            role: 'assistant',
+            content: `Encontré ${data.switchOptions.matches.length} workspaces para "${data.switchOptions.query}": ${names}. Precisa con "usa <nombre>" o elígeme uno.`,
+          }
+          setMessages((prev) => [...prev, assistantMsg])
+          await persistTurn(userMsg, assistantMsg)
+          setStatus('idle')
+          return
+        }
+      }
+
       // Reserva el mensaje assistant que se irá llenando con el texto del stream.
       setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
 
@@ -288,7 +326,7 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
     } finally {
       abortRef.current = null
     }
-  }, [input, messages, status, workspaceId, isDemo, nodes, edges, applyLocalEvent, persistTurn])
+  }, [input, messages, status, workspaceId, isDemo, nodes, edges, applyLocalEvent, persistTurn, router])
 
   return (
     <div className="flex h-full flex-col">
