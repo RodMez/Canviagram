@@ -2,16 +2,33 @@ import { describe, it, expect } from 'vitest'
 import {
   DEMO_WORKSPACE_ID,
   DEMO_CREATED_AT,
+  DEMO_ASSIGNEES,
+  DEMO_SUGGESTED_PROMPTS,
   isDemoWorkspace,
   demoId,
   getDemoFixtures,
+  getDemoBuckets,
+  resolveDemoAssigneeName,
   demoGraphToPayload,
 } from '@/lib/demo/fixtures'
 import { NODE_TYPES, NODE_STATUSES, EDGE_TYPES } from '@/lib/db/schema'
 
 // ============================================================
-// F4.1a: validez estructural de los fixtures de la demo
+// F7: validez estructural de los fixtures demo (Café Luna)
 // ============================================================
+
+const FORBIDDEN = [
+  'Ana',
+  'Luis',
+  'Valeria',
+  'Figma',
+  'newsletter',
+  'producción',
+  'deploy',
+  'Next.js',
+  'Template',
+  'artículo',
+]
 
 describe('lib/demo/fixtures', () => {
   describe('constantes y helpers', () => {
@@ -34,16 +51,54 @@ describe('lib/demo/fixtures', () => {
     })
   })
 
-  describe('getDemoFixtures', () => {
-    it('devuelve 7 nodos y 5 edges (F5.1: sin nodo-hub project)', () => {
+  describe('getDemoFixtures (Café Luna)', () => {
+    it('devuelve 12 nodos y 7 edges (sin nodo-hub project)', () => {
       const { nodes, edges } = getDemoFixtures()
-      expect(nodes).toHaveLength(7)
-      expect(edges).toHaveLength(5)
+      expect(nodes).toHaveLength(12)
+      expect(edges).toHaveLength(7)
     })
 
     it('no contiene nodos de tipo project (F5.1: workspace = proyecto)', () => {
       const { nodes } = getDemoFixtures()
       expect(nodes.some((n) => (n.type as string) === 'project')).toBe(false)
+    })
+
+    it('no usa nombres ni temas de la escena ingenieril anterior', () => {
+      const { nodes } = getDemoFixtures()
+      const haystack = nodes.map((n) => `${n.title} ${n.content ?? ''}`).join('\n')
+      for (const word of FORBIDDEN) {
+        expect(haystack).not.toContain(word)
+      }
+    })
+
+    it('responsables demo solo Emma, Liam u Oliver', () => {
+      const { nodes } = getDemoFixtures()
+      const tasks = nodes.filter((n) => n.type === 'task')
+      expect(tasks).toHaveLength(7)
+      for (const t of tasks) {
+        expect(DEMO_ASSIGNEES[t.id]).toMatch(/^(Emma|Liam|Oliver)$/)
+        expect(t.assigneeId).toBe(DEMO_ASSIGNEES[t.id])
+      }
+    })
+
+    it('resolveDemoAssigneeName solo resuelve personas de la demo', () => {
+      expect(resolveDemoAssigneeName('Emma')).toBe('Emma')
+      expect(resolveDemoAssigneeName('Oliver')).toBe('Oliver')
+      expect(resolveDemoAssigneeName('user-uuid-real')).toBeNull()
+      expect(resolveDemoAssigneeName(null)).toBeNull()
+      expect(resolveDemoAssigneeName(undefined)).toBeNull()
+    })
+
+    it('hay vencida, de hoy y futuras: alimenta los buckets de Hoy', () => {
+      const now = new Date('2026-09-15T10:00:00')
+      const { nodes } = getDemoFixtures(now)
+      const buckets = getDemoBuckets(nodes, now)
+      expect(buckets.overdue.map((n) => n.id)).toContain('demo-task-permiso')
+      expect(buckets.today.map((n) => n.id)).toEqual(
+        expect.arrayContaining(['demo-task-maquina', 'demo-task-menu'])
+      )
+      expect(buckets.upcoming.length).toBeGreaterThanOrEqual(3)
+      expect(buckets.done.map((n) => n.id)).toContain('demo-task-local')
     })
 
     it('devuelve arrays NUEVOS en cada llamada (reseed limpio)', () => {
@@ -107,14 +162,34 @@ describe('lib/demo/fixtures', () => {
       expect(types.has('depends_on')).toBe(true)
       expect(types.has('related_to')).toBe(true)
     })
+
+    it('la máquina está bloqueada por el permiso (chip del Tablero)', () => {
+      const { edges } = getDemoFixtures()
+      const block = edges.find(
+        (e) => e.sourceId === 'demo-task-maquina' && e.type === 'depends_on'
+      )
+      expect(block?.targetId).toBe('demo-task-permiso')
+    })
+  })
+
+  describe('DEMO_SUGGESTED_PROMPTS', () => {
+    it('son prompts no vacíos y únicos', () => {
+      expect(DEMO_SUGGESTED_PROMPTS.length).toBeGreaterThanOrEqual(3)
+      const ids = DEMO_SUGGESTED_PROMPTS.map((p) => p.id)
+      expect(new Set(ids).size).toBe(ids.length)
+      for (const p of DEMO_SUGGESTED_PROMPTS) {
+        expect(p.label.length).toBeGreaterThan(0)
+        expect(p.prompt.length).toBeGreaterThan(0)
+      }
+    })
   })
 
   describe('demoGraphToPayload', () => {
     it('serializa nodos/edges al shape del body de chat-demo', () => {
       const { nodes, edges } = getDemoFixtures()
       const payload = demoGraphToPayload({ nodes, edges })
-      expect(payload.nodes).toHaveLength(7)
-      expect(payload.edges).toHaveLength(5)
+      expect(payload.nodes).toHaveLength(12)
+      expect(payload.edges).toHaveLength(7)
       const node = payload.nodes[0]
       expect(node).toEqual({
         id: node.id,
@@ -129,7 +204,7 @@ describe('lib/demo/fixtures', () => {
         boardColumnId: (node as { boardColumnId?: unknown }).boardColumnId ?? null,
         positionX: node.positionX,
         positionY: node.positionY,
-        dueDate: null,
+        dueDate: node.dueDate,
         reminderOffsetMin: null,
       })
       expect(node).not.toHaveProperty('workspaceId')

@@ -50,7 +50,7 @@ describe('lib/demo/graph-ops', () => {
       expect(node.workspaceId).toBe('demo')
       expect(node.createdBy).toBe('demo')
       expect(node.status).toBe('todo')
-      expect(graph.nodes).toHaveLength(8)
+      expect(graph.nodes).toHaveLength(13)
     })
 
     it('rechaza status en nodos no-task (misma validación que prod)', () => {
@@ -66,10 +66,10 @@ describe('lib/demo/graph-ops', () => {
 
   describe('updateNode', () => {
     it('actualiza campos del nodo existente', () => {
-      const updated = updateNode(graph, 'demo-task-1', { title: 'Nuevo título', status: 'done' })
+      const updated = updateNode(graph, 'demo-task-local', { title: 'Nuevo título', status: 'done' })
       expect(updated.title).toBe('Nuevo título')
       expect(updated.status).toBe('done')
-      expect(graph.nodes.find((n) => n.id === 'demo-task-1')?.title).toBe('Nuevo título')
+      expect(graph.nodes.find((n) => n.id === 'demo-task-local')?.title).toBe('Nuevo título')
     })
 
     it('lanza NotFoundError si el nodo no existe', () => {
@@ -77,22 +77,22 @@ describe('lib/demo/graph-ops', () => {
     })
 
     it('rechaza status en nodo no-task', () => {
-      expect(() => updateNode(graph, 'demo-note-1', { status: 'done' })).toThrow(ValidationError)
+      expect(() => updateNode(graph, 'demo-note-deco', { status: 'done' })).toThrow(ValidationError)
     })
   })
 
   describe('deleteNode', () => {
     it('borra el nodo y cascadea sus edges', () => {
-      // F5.1: sin hub demo-proj-1; demo-task-2 concentra 3 edges (4, 5, 7)
-      const result = deleteNode(graph, 'demo-task-2')
+      // F7 (Café Luna): la máquina concentra 3 edges (1, 5 y 7)
+      const result = deleteNode(graph, 'demo-task-maquina')
       expect(result.success).toBe(true)
-      expect(result.nodeId).toBe('demo-task-2')
+      expect(result.nodeId).toBe('demo-task-maquina')
       expect(result.removedEdgeIds).toHaveLength(3)
       expect(result.removedEdgeIds).toEqual(
-        expect.arrayContaining(['demo-edge-4', 'demo-edge-5', 'demo-edge-7'])
+        expect.arrayContaining(['demo-edge-1', 'demo-edge-5', 'demo-edge-7'])
       )
-      expect(graph.nodes.find((n) => n.id === 'demo-task-2')).toBeUndefined()
-      expect(graph.edges.some((e) => e.sourceId === 'demo-task-2' || e.targetId === 'demo-task-2')).toBe(false)
+      expect(graph.nodes.find((n) => n.id === 'demo-task-maquina')).toBeUndefined()
+      expect(graph.edges.some((e) => e.sourceId === 'demo-task-maquina' || e.targetId === 'demo-task-maquina')).toBe(false)
     })
 
     it('lanza NotFoundError si el nodo no existe', () => {
@@ -103,35 +103,35 @@ describe('lib/demo/graph-ops', () => {
   describe('createEdge', () => {
     it('crea edge con id demo-* entre nodos existentes', () => {
       const edge = createEdge(graph, {
-        sourceId: 'demo-task-1',
-        targetId: 'demo-task-3',
+        sourceId: 'demo-task-local',
+        targetId: 'demo-task-barista',
         type: 'depends_on',
         label: 'después',
       })
       expect(edge.id).toMatch(/^e-[0-9a-f]{8}$/)
       expect(edge.workspaceId).toBe('demo')
       expect(edge.label).toBe('después')
-      expect(graph.edges).toHaveLength(6)
+      expect(graph.edges).toHaveLength(8)
     })
 
     it('rechaza self-loop (misma validación que prod)', () => {
       expect(() =>
-        createEdge(graph, { sourceId: 'demo-task-1', targetId: 'demo-task-1', type: 'related_to' })
+        createEdge(graph, { sourceId: 'demo-task-local', targetId: 'demo-task-local', type: 'related_to' })
       ).toThrow(ValidationError)
     })
 
     it('lanza NotFoundError si source o target no existen', () => {
       expect(() =>
-        createEdge(graph, { sourceId: 'n-inexistente', targetId: 'demo-task-1', type: 'related_to' })
+        createEdge(graph, { sourceId: 'n-inexistente', targetId: 'demo-task-local', type: 'related_to' })
       ).toThrow(NotFoundError)
     })
   })
 
   describe('deleteEdge', () => {
     it('borra el edge por id', () => {
-      const result = deleteEdge(graph, 'demo-edge-4')
-      expect(result).toEqual({ success: true, edgeId: 'demo-edge-4' })
-      expect(graph.edges.find((e) => e.id === 'demo-edge-4')).toBeUndefined()
+      const result = deleteEdge(graph, 'demo-edge-1')
+      expect(result).toEqual({ success: true, edgeId: 'demo-edge-1' })
+      expect(graph.edges.find((e) => e.id === 'demo-edge-1')).toBeUndefined()
     })
 
     it('lanza NotFoundError si el edge no existe', () => {
@@ -142,8 +142,8 @@ describe('lib/demo/graph-ops', () => {
   describe('queryGraph', () => {
     it('retorna el grafo actual', () => {
       const result = queryGraph(graph)
-      expect(result.nodes).toHaveLength(7)
-      expect(result.edges).toHaveLength(5)
+      expect(result.nodes).toHaveLength(12)
+      expect(result.edges).toHaveLength(7)
     })
   })
 })

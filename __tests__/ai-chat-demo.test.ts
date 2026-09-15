@@ -119,8 +119,8 @@ describe('POST /api/ai/chat-demo', () => {
 
     const streamArgs = mStreamText.mock.calls[0][0]
     expect(streamArgs.system).toContain('DEMO pública')
-    expect(streamArgs.system).toContain('demo-task-2')
-    expect(streamArgs.system).toContain('demo-task-1 --[depends_on]--> demo-task-2')
+    expect(streamArgs.system).toContain('demo-task-maquina')
+    expect(streamArgs.system).toContain('demo-task-maquina --[depends_on]--> demo-task-permiso')
     const tools = streamArgs.tools as Record<string, unknown>
     expect(tools).toBeDefined()
     expect(tools.createNode).toBeDefined()
@@ -140,7 +140,7 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
     )
     expect(result).toMatchObject({ type: 'task', title: 'Publicar post', status: 'todo' })
     expect(result).not.toHaveProperty('workspaceId')
-    expect(graph.nodes).toHaveLength(8)
+    expect(graph.nodes).toHaveLength(13)
   })
 
   it('deleteNode cascadea edges y retorna removedEdgeIds', async () => {
@@ -148,15 +148,15 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
     const tools = buildDemoTools({ graph })
     const opts = { toolCallId: 'call-1', messages: [], context: {} }
 
-    // F5.1: sin hub demo-proj-1; demo-task-2 concentra los edges 4, 5 y 7
-    const result = await tools.deleteNode.execute!({ nodeId: 'demo-task-2' }, opts)
+    // F7 (Café Luna): la máquina concentra los edges 1, 5 y 7
+    const result = await tools.deleteNode.execute!({ nodeId: 'demo-task-maquina' }, opts)
     expect(result).toEqual({
       success: true,
-      nodeId: 'demo-task-2',
-      removedEdgeIds: ['demo-edge-4', 'demo-edge-5', 'demo-edge-7'],
+      nodeId: 'demo-task-maquina',
+      removedEdgeIds: ['demo-edge-1', 'demo-edge-5', 'demo-edge-7'],
     })
-    expect(graph.nodes).toHaveLength(6)
-    expect(graph.edges).toHaveLength(2)
+    expect(graph.nodes).toHaveLength(11)
+    expect(graph.edges).toHaveLength(4)
   })
 
   it('queryGraph retorna nodos/edges serializados con summary', async () => {
@@ -169,9 +169,9 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
       edges: unknown[]
       summary: string
     }
-    expect(result.summary).toBe('7 nodos, 5 conexiones')
-    expect(result.nodes).toHaveLength(7)
-    expect(result.edges).toHaveLength(5)
+    expect(result.summary).toBe('12 nodos, 7 conexiones')
+    expect(result.nodes).toHaveLength(12)
+    expect(result.edges).toHaveLength(7)
   })
 
   it('layoutGraph reordena el grafo en memoria y devuelve nodos con posición', async () => {
@@ -183,12 +183,12 @@ describe('buildDemoTools — graph mutado por tools (publish local)', () => {
       repositioned: number
       nodes: Array<{ id: string; positionX: number; positionY: number }>
     }
-    expect(result.repositioned).toBe(7)
-    expect(result.nodes).toHaveLength(7)
-    // Jerarquía dagre: task-1 arriba de task-2 (depends_on)
-    const t1 = result.nodes.find((n) => n.id === 'demo-task-1')!
-    const t2 = result.nodes.find((n) => n.id === 'demo-task-2')!
-    expect(t2.positionY).toBeGreaterThan(t1.positionY)
+    expect(result.repositioned).toBe(12)
+    expect(result.nodes).toHaveLength(12)
+    // Jerarquía dagre: la máquina arriba del permiso (depends_on maquina→permiso)
+    const maq = result.nodes.find((n) => n.id === 'demo-task-maquina')!
+    const per = result.nodes.find((n) => n.id === 'demo-task-permiso')!
+    expect(per.positionY).toBeGreaterThan(maq.positionY)
   })
 })
 

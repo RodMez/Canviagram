@@ -8,7 +8,7 @@ import { isAIEnabled, callWithFallback } from '@/lib/ai/provider'
 import { buildDemoTools } from '@/lib/ai/tools-demo'
 import { cloneGraph, type DemoGraph } from '@/lib/demo/graph-ops'
 import { DEMO_WORKSPACE_ID, DEMO_CREATED_AT } from '@/lib/demo/fixtures'
-import { NODE_TYPES, NODE_STATUSES, EDGE_TYPES } from '@/lib/db/schema'
+import { NODE_TYPES, NODE_STATUSES, NODE_PRIORITIES, EDGE_TYPES } from '@/lib/db/schema'
 import { env } from '@/lib/env'
 
 // ============================================================
@@ -41,6 +41,9 @@ const demoChatRequestSchema = z.object({
           title: z.string().min(1).max(200),
           content: z.string().max(5000).nullable().optional(),
           status: z.enum(NODE_STATUSES).nullable().optional(),
+          priority: z.enum(NODE_PRIORITIES).nullable().optional(),
+          effort: z.number().int().min(0).max(100).nullable().optional(),
+          dueDate: z.string().datetime().nullable().optional(),
           positionX: z.number().finite(),
           positionY: z.number().finite(),
         })
@@ -68,7 +71,16 @@ function buildDemoSystemPrompt(graph: DemoGraph): string {
   // el prompt ante grafos grandes.
   const nodeSummary = graph.nodes
     .slice(0, 100)
-    .map((n) => `- [${n.type}] "${n.title}" (id: ${n.id}${n.status ? `, status: ${n.status}` : ''})`)
+    .map((n) => {
+      const extra = [
+        n.status ? `status: ${n.status}` : null,
+        n.priority ? `prioridad: ${n.priority}` : null,
+        n.dueDate ? `vence: ${new Date(n.dueDate).toISOString().slice(0, 10)}` : null,
+      ]
+        .filter(Boolean)
+        .join(', ')
+      return `- [${n.type}] "${n.title}" (id: ${n.id}${extra ? `, ${extra}` : ''})`
+    })
     .join('\n')
 
   const edgeSummary = graph.edges
@@ -103,6 +115,8 @@ ${edgeSummary || '(ninguna)'}
 - Al crear nodos, asigna posiciones razonables respecto a la estructura existente, sin solapar.
 - Tras crear o conectar 2+ nodos en la misma respuesta, llama a layoutGraph para que el canvas quede ordenado.
 - Valida tipos (task, note, idea, person, resource) y solo "task" puede tener status.
+- Si preguntan qué vence hoy o qué falta, usa el status, la prioridad y los
+  vencimientos del resumen (no inventes fechas).
 - Si hay errores de validación, informa y sugiere correcciones.
 - Responde en español unless the user writes in English.`
 }
@@ -147,13 +161,13 @@ export async function POST(request: Request) {
       title: n.title,
       content: n.content ?? null,
       status: n.status ?? null,
-      priority: null,
-      effort: null,
+      priority: n.priority ?? null,
+      effort: n.effort ?? null,
       assigneeId: null,
       linkedUserId: null,
       boardColumnId: null,
       boardOrder: 0,
-      dueDate: null,
+      dueDate: n.dueDate ? new Date(n.dueDate) : null,
       reminderOffsetMin: null,
       notifiedAt: null,
       recurrenceRule: null,
