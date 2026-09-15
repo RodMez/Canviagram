@@ -8,7 +8,12 @@ import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
 import { isAIEnabled, callWithFallback } from '@/lib/ai/provider'
 import { buildTools } from '@/lib/ai/tools'
 import { getWorkspaceGraph } from '@/lib/canvas-service'
-import { extractSwitchQuery, resolveSwitchTarget } from '@/lib/workspace/switch'
+import { listWorkspacesForUser } from '@/lib/canvas/workspace-by-slug'
+import {
+  extractSwitchQuery,
+  extractDeleteQuery,
+  resolveSwitchTarget,
+} from '@/lib/workspace/switch'
 import { handleApiError } from '@/lib/api-helpers'
 
 // System prompt con contexto del workspace
@@ -66,6 +71,7 @@ ${memberLines || '(sin miembros)'}
 - Tras crear o conectar 2+ nodos en la misma respuesta, llama a layoutGraph para que el canvas quede ordenado.
 - Valida tipos de nodo y estado antes de crear (solo "task" puede tener status/priority/effort/responsable; solo "person" puede vincularse a un usuario).
 - En tu respuesta visible NUNCA muestres IDs largos/UUIDs: resume con títulos en negrita, estado, responsable, prioridad, esfuerzo y fecha. Información útil, no técnica.
+- Tras ejecutar una tool (crear/actualizar/borrar/conectar/renombrar), resume brevemente QUÉ cambió (con títulos y cantidades, sin IDs). Si el usuario pide crear un workspace, usa createWorkspace; el sistema navegará al nuevo slug.
 - Si hay errores de validación, informa al usuario y sugiere correcciones.
 - Responde en español unless the user writes in English.`
 }
@@ -125,7 +131,59 @@ export async function POST(request: Request) {
           },
         })
       }
+      if (target.kind === 'unspecified') {
+        const all = await listWorkspacesForUser(session.userId)
+        return NextResponse.json({
+          switchOptions: {
+            query: '',
+            matches: all.map((w) => ({ id: w.id, name: w.name, slug: w.slug })),
+          },
+        })
+      }
       // 'none' => fallthrough al LLM. 'empty' => fallthrough.
+    }
+
+    // Borrado por lenguaje natural: NUNCA ejecuta directo; devuelve JSON para
+    // que el cliente pida confirmación con botones (el servidor revalida owner
+    // + confirmSlug en DELETE /api/workspaces/:id).
+    const deleteQuery = extractDeleteQuery(
+      typeof lastUser?.content === 'string' ? lastUser.content : ''
+    )
+    if (deleteQuery) {
+      const target = await resolveSwitchTarget(session.userId, deleteQuery)
+      if (target.kind === 'single') {
+        const all = await listWorkspacesForUser(session.userId)
+        const isOwner = all.some((w) => w.id === target.workspace.id && w.ownerId === session.userId)
+        if (isOwner) {
+          return NextResponse.json({
+            deleteConfirm: {
+              id: target.workspace.id,
+              name: target.workspace.name,
+              slug: target.workspace.slug,
+            },
+          })
+        }
+        return NextResponse.json({ deleteDenied: { name: target.workspace.name } })
+      }
+      if (target.kind === 'multi') {
+        return NextResponse.json({
+          deleteOptions: {
+            query: target.query,
+            matches: target.matches.map((w) => ({ id: w.id, name: w.name, slug: w.slug })),
+          },
+        })
+      }
+      if (target.kind === 'none') {
+        const all = await listWorkspacesForUser(session.userId)
+        return NextResponse.json({
+          deleteNotFound: {
+            query: deleteQuery,
+            names: all.map((w) => w.name),
+          },
+        })
+      }
+      // unspecified | empty → guía para precisar.
+      return NextResponse.json({ deleteGuide: true })
     }
 
     if (!isAIEnabled()) {

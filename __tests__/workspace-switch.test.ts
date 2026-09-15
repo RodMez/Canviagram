@@ -6,9 +6,11 @@ vi.mock('@/lib/auth/workspace-access', () => ({ assertWorkspaceAccess: vi.fn() }
 
 import {
   SWITCH_RE,
+  DELETE_SWITCH_RE,
   normalizeWs,
   matchWorkspace,
   extractSwitchQuery,
+  extractDeleteQuery,
   resolveSwitchTarget,
 } from '@/lib/workspace/switch'
 import { listWorkspacesForUser } from '@/lib/canvas/workspace-by-slug'
@@ -47,6 +49,61 @@ describe('lib/workspace/switch (paridad bot/web)', () => {
     expect(extractSwitchQuery('/usar alfa')).toBeNull()
     expect(extractSwitchQuery('usa x')).toBeNull() // <2 chars
     expect(extractSwitchQuery('usa a\nb')).toBeNull() // newline
+  })
+
+  it('SWITCH_RE: verbos ampliados (cámbiame/pásame/quiero trabajar en/navega)', () => {
+    expect(extractSwitchQuery('cámbiame a alfa')).toBe('alfa')
+    expect(extractSwitchQuery('cambiame al proyecto')).toBe('proyecto')
+    expect(extractSwitchQuery('pásame al beta')).toBe('beta')
+    expect(extractSwitchQuery('pasame a mi proyecto')).toBe('mi proyecto')
+    expect(extractSwitchQuery('muéveme a alfa')).toBe('alfa')
+    expect(extractSwitchQuery('quiero trabajar en beta')).toBe('beta')
+    expect(extractSwitchQuery('quiero pasar a alfa')).toBe('alfa')
+    expect(extractSwitchQuery('ir al proyecto')).toBe('proyecto')
+    expect(extractSwitchQuery('navega al alfa')).toBe('alfa')
+    expect(extractSwitchQuery('cambia de workspace')).toBe('workspace') // filler
+  })
+
+  it('cleanQuery: recorta preguntas y signos de interrogación', () => {
+    expect(extractSwitchQuery('¿cambia a alfa?')).toBe('alfa')
+    expect(extractSwitchQuery('usar "beta"')).toBe('beta')
+  })
+
+  it('DELETE_SWITCH_RE + extractDeleteQuery: borrado por lenguaje natural', () => {
+    expect('borra mi proyecto'.match(DELETE_SWITCH_RE)?.[1]).toBe('mi proyecto')
+    expect(extractDeleteQuery('borra alfa')).toBe('alfa')
+    expect(extractDeleteQuery('elimina el beta')).toBe('beta')
+    expect(extractDeleteQuery('quita mi proyecto')).toBe('mi proyecto')
+    expect(extractDeleteQuery('suprime el alfa')).toBe('alfa')
+    // Negativos: sin verbo, anchos <2, solo verbo (sin target), no anclado al inicio.
+    expect(extractDeleteQuery('hola mundo')).toBeNull()
+    expect(extractDeleteQuery('borra x')).toBeNull()
+    expect(extractDeleteQuery('borra')).toBeNull()
+    expect(extractDeleteQuery('oye, borra alfa')).toBeNull()
+    expect(extractDeleteQuery('/borrar alfa')).toBeNull()
+  })
+
+  it('resolveSwitchTarget filler → unspecified sin consultar workspaces', async () => {
+    const target = await resolveSwitchTarget('u1', 'workspace')
+    expect(target.kind).toBe('unspecified')
+    expect(mList).not.toHaveBeenCalled()
+    expect(await resolveSwitchTarget('u1', 'canal')).toEqual({ kind: 'unspecified' })
+    expect(await resolveSwitchTarget('u1', 'mi ws')).toEqual({ kind: 'unspecified' })
+    expect(mList).not.toHaveBeenCalled()
+  })
+
+  it('resolveSwitchTarget query vacía → empty', async () => {
+    expect(await resolveSwitchTarget('u1', '   ')).toEqual({ kind: 'empty' })
+  })
+
+  it('resolveSwitchTarget multi y none', async () => {
+    mList.mockResolvedValue(WS as never)
+    const multi = await resolveSwitchTarget('u1', 'proyecto')
+    expect(multi.kind).toBe('multi')
+    expect((multi as { matches: unknown[] }).matches).toHaveLength(2)
+    const none = await resolveSwitchTarget('u1', 'zzz')
+    expect(none.kind).toBe('none')
+    expect((none as { all: unknown[] }).all).toHaveLength(2)
   })
 
   it('resolveSwitchTarget single valida acceso', async () => {

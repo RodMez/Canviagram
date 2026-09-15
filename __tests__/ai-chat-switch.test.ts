@@ -34,7 +34,10 @@ describe('POST /api/ai/chat switch por lenguaje natural', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mSession.mockResolvedValue({ userId: USER_ID, token: 't' })
-    mAssert.mockImplementation(async (id: string) => ({ workspace: { id, name: 'W', slug: 'w' }, role: 'member' }) as never)
+    mAssert.mockImplementation(async (id: string) => {
+      const row = [ALFA, BETA].find((w) => w.id === id)
+      return { workspace: row ?? { id, name: 'W', slug: 'w' }, role: 'member' } as never
+    })
     mList.mockResolvedValue([ALFA, BETA] as never)
     mEnabled.mockReturnValue(false)
   })
@@ -75,6 +78,62 @@ describe('POST /api/ai/chat switch por lenguaje natural', () => {
     const body = await res.json()
     expect(body.switchOptions.query).toBe('proyecto')
     expect(body.switchOptions.matches).toHaveLength(2)
+  })
+
+  it('switch unspecified (filler) → switchOptions con todos los workspaces', async () => {
+    const res = await POST(req('cambia de workspace'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.switchOptions.query).toBe('')
+    expect(body.switchOptions.matches).toHaveLength(2)
+  })
+
+  it('delete single owner → deleteConfirm (nunca ejecuta el borrado)', async () => {
+    mList.mockResolvedValue([
+      { ...ALFA, ownerId: USER_ID },
+      { ...BETA, ownerId: USER_ID },
+    ] as never)
+    const res = await POST(req('borra alfa'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      deleteConfirm: { id: ALFA.id, name: ALFA.name, slug: ALFA.slug },
+    })
+  })
+
+  it('delete single NO owner → deleteDenied', async () => {
+    mList.mockResolvedValue([
+      { ...ALFA, ownerId: 'someone-else' },
+      { ...BETA, ownerId: USER_ID },
+    ] as never)
+    const res = await POST(req('borra alfa'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ deleteDenied: { name: ALFA.name } })
+  })
+
+  it('delete multi → deleteOptions con matches', async () => {
+    mList.mockResolvedValue([
+      { ...ALFA, ownerId: USER_ID },
+      { ...BETA, ownerId: USER_ID },
+    ] as never)
+    const res = await POST(req('borra proyecto'))
+    const body = await res.json()
+    expect(body.deleteOptions.query).toBe('proyecto')
+    expect(body.deleteOptions.matches).toHaveLength(2)
+  })
+
+  it('delete sin match → deleteNotFound con los disponibles', async () => {
+    mList.mockResolvedValue([{ ...ALFA, ownerId: USER_ID }] as never)
+    const res = await POST(req('borra zzz-no'))
+    const body = await res.json()
+    expect(body.deleteNotFound.query).toBe('zzz-no')
+    expect(body.deleteNotFound.names).toContain(ALFA.name)
+  })
+
+  it('delete filler ("borra el workspace") → deleteGuide', async () => {
+    mList.mockResolvedValue([{ ...ALFA, ownerId: USER_ID }] as never)
+    const res = await POST(req('borra el workspace'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ deleteGuide: true })
   })
 
   it('sin match cae al flujo normal (503 con IA deshabilitada)', async () => {
