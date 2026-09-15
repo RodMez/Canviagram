@@ -17,7 +17,11 @@ export async function listWorkspacesForUser(userId: string) {
     .from(workspaceMembers)
     .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
     .where(eq(workspaceMembers.userId, userId))
-  const memberWorkspaces = memberships.map((m) => m.workspace)
+  // El owner tiene su propia fila en workspaceMembers (POST /api/workspaces y
+  // register la insertan): si no la excluimos, cada workspace del owner sale
+  // duplicado en /lista, el switch NL y el selector. Dedupe por id, owner primero.
+  const seen = new Set(owned.map((w) => w.id))
+  const memberWorkspaces = memberships.map((m) => m.workspace).filter((w) => !seen.has(w.id))
   return [...owned, ...memberWorkspaces]
 }
 

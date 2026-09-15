@@ -9,13 +9,26 @@ vi.mock('@/lib/canvas-service', () => ({
   getWorkspaceGraph: vi.fn(),
   relayoutWorkspace: vi.fn(),
 }))
+vi.mock('@/lib/workspace-admin', () => ({
+  createWorkspace: vi.fn(),
+  updateWorkspace: vi.fn(),
+}))
+vi.mock('@/lib/canvas/workspace-by-slug', () => ({ listWorkspacesForUser: vi.fn() }))
 
 import * as canvasService from '@/lib/canvas-service'
 import { buildTools, serializeNode, serializeEdge } from '@/lib/ai/tools'
+import { createWorkspace, updateWorkspace } from '@/lib/workspace-admin'
+import { listWorkspacesForUser } from '@/lib/canvas/workspace-by-slug'
 
 const cs = vi.mocked(canvasService)
+const mCreateWorkspace = vi.mocked(createWorkspace)
+const mUpdateWorkspace = vi.mocked(updateWorkspace)
+const mListWorkspaces = vi.mocked(listWorkspacesForUser)
 const ctx = { workspaceId: 'ws-1', userId: 'user-1' }
 const opts = { toolCallId: 'call-1', messages: [], context: {} }
+
+const ALFA = { id: 'ws-alfa', name: 'Proyecto Alfa', slug: 'proyecto-alfa' }
+const BETA = { id: 'ws-beta', name: 'Proyecto Beta', slug: 'proyecto-beta' }
 
 describe('AI tools', () => {
   beforeEach(() => { vi.clearAllMocks() })
@@ -91,5 +104,75 @@ describe('AI tools', () => {
     error.name = 'ValidationError'
     cs.createNode.mockRejectedValue(error)
     await expect(buildTools(ctx).createNode.execute!({ type: 'task', title: 'Test' }, opts)).rejects.toThrow('Validation failed')
+  })
+
+  // ============================================================
+  // Tools de workspace (paridad bot/web)
+  // ============================================================
+
+  it('createWorkspace delega en createWorkspaceService y devuelve { workspace }', async () => {
+    mCreateWorkspace.mockResolvedValue({ workspace: { id: 'ws-nuevo', name: 'Nuevo', slug: 'nuevo', ownerId: 'user-1', createdAt: new Date() } } as never)
+    const result = await buildTools(ctx).createWorkspace.execute!({ name: 'Nuevo' }, opts)
+    expect(mCreateWorkspace).toHaveBeenCalledWith('user-1', { name: 'Nuevo' })
+    expect(result).toEqual({ workspace: { id: 'ws-nuevo', name: 'Nuevo', slug: 'nuevo' } })
+  })
+
+  it('renameWorkspace sin query → aplica al workspace actual', async () => {
+    mListWorkspaces.mockResolvedValue([ALFA, BETA] as never)
+    mUpdateWorkspace.mockResolvedValue({
+      workspace: { id: 'ws-1', name: 'Renombrado', slug: 'renombrado', ownerId: 'user-1', createdAt: new Date() },
+    } as never)
+    const result = await buildTools(ctx).renameWorkspace.execute!({ name: 'Renombrado' }, opts)
+    expect(mUpdateWorkspace).toHaveBeenCalledWith('ws-1', 'user-1', { name: 'Renombrado' })
+    expect(result).toEqual({ workspace: { id: 'ws-1', name: 'Renombrado', slug: 'renombrado' } })
+  })
+
+  it('renameWorkspace con workspaceQuery → resuelve por fuzzy', async () => {
+    mListWorkspaces.mockResolvedValue([ALFA, BETA] as never)
+    mUpdateWorkspace.mockResolvedValue({
+      workspace: { id: 'ws-beta', name: 'Renombrado Beta', slug: 'proyecto-beta', ownerId: 'user-1', createdAt: new Date() },
+    } as never)
+    await buildTools(ctx).renameWorkspace.execute!({ name: 'Renombrado Beta', workspaceQuery: 'beta' }, opts)
+    expect(mUpdateWorkspace).toHaveBeenCalledWith('ws-beta', 'user-1', { name: 'Renombrado Beta' })
+  })
+
+  it('renameWorkspace ambiguo → Error para que la IA pida aclaración', async () => {
+    mListWorkspaces.mockResolvedValue([ALFA, BETA] as never)
+    await expect(
+      buildTools(ctx).renameWorkspace.execute!({ name: 'X', workspaceQuery: 'proyecto' }, opts)
+    ).rejects.toThrow('Varios workspaces')
+  })
+
+  it('renameWorkspace sin match → Error con los disponibles', async () => {
+    mListWorkspaces.mockResolvedValue([ALFA, BETA] as never)
+    await expect(
+      buildTools(ctx).renameWorkspace.execute!({ name: 'X', workspaceQuery: 'zzz' }, opts)
+    ).rejects.toThrow('Ningún workspace')
+  })
+
+  it('listWorkspaces devuelve id/name/slug sin ownerId', async () => {
+    mListWorkspaces.mockResolvedValue([{ ...ALFA, ownerId: 'user-1' }, { ...BETA, ownerId: 'user-1' }] as never)
+    const result = await buildTools(ctx).listWorkspaces.execute!({}, opts)
+    expect(result).toEqual({ workspaces: [ALFA, BETA] })
+  })
+
+  it('switchWorkspace 1 match devuelve el destino (el sistema hace el cambio)', async () => {
+    mListWorkspaces.mockResolvedValue([ALFA, BETA] as never)
+    const result = await buildTools(ctx).switchWorkspace.execute!({ workspaceQuery: 'alfa' }, opts)
+    expect(result).toEqual({ workspace: { id: 'ws-alfa', name: 'Proyecto Alfa', slug: 'proyecto-alfa' } })
+  })
+
+  it('switchWorkspace ambiguo → Error (el LLM pide aclaración)', async () => {
+    mListWorkspaces.mockResolvedValue([ALFA, BETA] as never)
+    await expect(
+      buildTools(ctx).switchWorkspace.execute!({ workspaceQuery: 'proyecto' }, opts)
+    ).rejects.toThrow('Varios workspaces')
+  })
+
+  it('switchWorkspace sin match → Error con los disponibles', async () => {
+    mListWorkspaces.mockResolvedValue([ALFA, BETA] as never)
+    await expect(
+      buildTools(ctx).switchWorkspace.execute!({ workspaceQuery: 'zzz-no' }, opts)
+    ).rejects.toThrow('Ningún workspace')
   })
 })

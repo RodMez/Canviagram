@@ -5,6 +5,9 @@ import { db } from '@/lib/db'
 import * as canvasService from '@/lib/canvas-service'
 import { serializeNode, serializeEdge } from '@/lib/ai/serialize'
 import { NODE_TYPES, NODE_PRIORITIES, RECURRENCE_RULES, users, workspaces, workspaceMembers } from '@/lib/db/schema'
+import { createWorkspace as createWorkspaceService, updateWorkspace as updateWorkspaceService } from '@/lib/workspace-admin'
+import { listWorkspacesForUser } from '@/lib/canvas/workspace-by-slug'
+import { matchWorkspace, type WorkspaceListItem } from '@/lib/workspace/switch'
 
 // Nota: el SDK ai v7 usa `inputSchema` (no `parameters` como en v4).
 // El diseño 1.2 usa `parameters`; se adapta a `inputSchema` para v7.
@@ -89,6 +92,31 @@ async function resolveLinkedUserInput(input: { linkedUserId?: string | null; lin
     linkedUserId = await resolveMemberIdByName(workspaceId, input.linkedUserName)
   }
   return linkedUserId
+}
+
+/**
+ * Resuelve el workspace sobre el que actuar una tool de workspace.
+ * - Sin workspaceQuery → el actual/activo (ctx.workspaceId).
+ * - Con query → fuzzy por nombre/slug; 1 match OK, 0/N → Error con candidatos
+ *   (el LLM pedirá aclaración o usará listWorkspaces).
+ */
+async function resolveTargetWorkspaceId(
+  userId: string,
+  workspaceQuery: string | undefined,
+  currentWorkspaceId: string
+): Promise<string> {
+  if (!workspaceQuery) return currentWorkspaceId
+  const all = (await listWorkspacesForUser(userId)) as WorkspaceListItem[]
+  const matches = matchWorkspace(workspaceQuery, all)
+  if (matches.length === 1) return matches[0]!.id
+  if (matches.length > 1) {
+    throw new Error(
+      `Varios workspaces coinciden con «${workspaceQuery}»: ${matches.map((w) => w.name).join(', ')}. Pide aclaración.`
+    )
+  }
+  throw new Error(
+    `Ningún workspace coincide con «${workspaceQuery}». Workspaces del usuario: ${all.map((w) => w.name).join(', ') || '(ninguno)'}`
+  )
 }
 
 // Factory: construye 7 tools con contexto de workspace.
@@ -244,6 +272,76 @@ export function buildTools(ctx: ToolContext) {
       execute: async () => {
         const result = await canvasService.relayoutWorkspace(ctx.workspaceId, ctx.userId)
         return { repositioned: result.repositioned }
+      },
+    }),
+
+    createWorkspace: tool({
+      description:
+        'Crea un workspace nuevo para el usuario. El slug se autogenera desde el nombre. ' +
+        'Devuelve el workspace creado (id, name, slug) para que el sistema lo active/navegue.',
+      inputSchema: z.object({
+        name: z.string().trim().min(2).max(100),
+      }),
+      execute: async ({ name }) => {
+        const { workspace } = await createWorkspaceService(ctx.userId, { name })
+        return {
+          workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug },
+        }
+      },
+    }),
+
+    renameWorkspace: tool({
+      description:
+        'Renombra un workspace (solo el nombre; el slug nunca cambia). Por defecto aplica al ' +
+        'workspace actual/activo; con workspaceQuery resuelve otro por nombre o slug aproximado.',
+      inputSchema: z.object({
+        name: z.string().trim().min(2).max(100),
+        workspaceQuery: z.string().min(1).max(100).optional(),
+      }),
+      execute: async ({ name, workspaceQuery }) => {
+        const targetId = await resolveTargetWorkspaceId(ctx.userId, workspaceQuery, ctx.workspaceId)
+        const { workspace } = await updateWorkspaceService(targetId, ctx.userId, { name })
+        return {
+          workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug },
+        }
+      },
+    }),
+
+    listWorkspaces: tool({
+      description:
+        'Lista los workspaces del usuario (id, name, slug). Úsala para resolver por nombre ' +
+        'a cuál cambiar/renombrar o confirmar los disponibles.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const list = await listWorkspacesForUser(ctx.userId)
+        return { workspaces: list.map((w) => ({ id: w.id, name: w.name, slug: w.slug })) }
+      },
+    }),
+
+    switchWorkspace: tool({
+      description:
+        'Cambia el workspace activo a «workspaceQuery» (nombre o slug aproximado). ' +
+        'Resuelve y devuelve el workspace destino; el sistema aplica el cambio y redirige. ' +
+        'Si el nombre es ambiguo o no existe, devuelve error para pedir aclaración.',
+      inputSchema: z.object({
+        workspaceQuery: z.string().min(1).max(100),
+      }),
+      execute: async ({ workspaceQuery }) => {
+        const all = (await listWorkspacesForUser(ctx.userId)) as WorkspaceListItem[]
+        const matches = matchWorkspace(workspaceQuery, all)
+        if (matches.length === 1) {
+          return {
+            workspace: { id: matches[0]!.id, name: matches[0]!.name, slug: matches[0]!.slug },
+          }
+        }
+        if (matches.length > 1) {
+          throw new Error(
+            `Varios workspaces coinciden con «${workspaceQuery}»: ${matches.map((w) => w.name).join(', ')}. Pide aclaración.`
+          )
+        }
+        throw new Error(
+          `Ningún workspace coincide con «${workspaceQuery}». Workspaces del usuario: ${all.map((w) => w.name).join(', ') || '(ninguno)'}`
+        )
       },
     }),
   }
