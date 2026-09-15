@@ -2,14 +2,14 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { workspaces, workspaceMembers } from '@/lib/db/schema'
-import { eq, and, ne } from 'drizzle-orm'
-import { v4 as uuidv4 } from 'uuid'
+import { eq, ne, and } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
+import { createWorkspace } from '@/lib/workspace-admin'
 import { createWorkspaceSchema } from '@/lib/validators/workspace'
 import { handleApiError } from '@/lib/api-helpers'
-import { ConflictError, ValidationError } from '@/lib/errors'
+import { ValidationError } from '@/lib/errors'
+import { db } from '@/lib/db'
+import { workspaces, workspaceMembers } from '@/lib/db/schema'
 
 export async function GET() {
   const session = await getSession()
@@ -87,45 +87,13 @@ export async function POST(request: Request) {
     return handleApiError(error)
   }
 
-  const workspaceId = uuidv4()
-  const memberId = uuidv4()
-  const now = new Date()
-
   try {
-    db.transaction((tx) => {
-      tx.insert(workspaces)
-        .values({
-          id: workspaceId,
-          ownerId: session.userId,
-          name: parsed!.name,
-          slug: parsed!.slug,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run()
-      tx.insert(workspaceMembers)
-        .values({
-          id: memberId,
-          workspaceId,
-          userId: session.userId,
-          role: 'owner',
-          joinedAt: now,
-          createdAt: now,
-        })
-        .run()
-    })
-
+    const { workspace } = await createWorkspace(session.userId, { name: parsed!.name, slug: parsed!.slug })
     return NextResponse.json(
-      { workspace: { id: workspaceId, name: parsed!.name, slug: parsed!.slug, createdAt: now } },
+      { workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug, createdAt: workspace.createdAt } },
       { status: 201 }
     )
   } catch (error) {
-    if (error instanceof Error) {
-      const msg = error.message.toLowerCase()
-      if (msg.includes('unique') || msg.includes('constraint') || msg.includes('slug')) {
-        return handleApiError(new ConflictError('El slug ya está en uso'))
-      }
-    }
     return handleApiError(error)
   }
 }

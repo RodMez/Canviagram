@@ -363,6 +363,11 @@ describe('workspace validators', () => {
     expect(result.success).toBe(true)
   })
 
+  it('38b - createWorkspace sin slug es válido (auto-slug desde el nombre)', () => {
+    const result = createWorkspaceSchema.safeParse({ name: 'Mi Workspace' })
+    expect(result.success).toBe(true)
+  })
+
   it('39 - slug mayúsculas debe fallar', () => {
     const result = createWorkspaceSchema.safeParse({
       name: 'Test',

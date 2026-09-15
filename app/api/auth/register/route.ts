@@ -9,18 +9,9 @@ import { hashPassword } from '@/lib/auth/password'
 import { hashToken } from '@/lib/auth/tokens'
 import { buildSessionCookieValue, sign, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth/session'
 import { sendVerificationEmail } from '@/lib/email/brevo'
+import { generateUniqueSlug } from '@/lib/workspace/slug'
 import { eq, isNull, and } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
-
-function toSlug(input: string): string {
-  return input
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-+/g, '-')
-}
 
 export async function POST(req: Request) {
   let body: unknown
@@ -50,26 +41,7 @@ export async function POST(req: Request) {
 
     const passwordHash = await hashPassword(password)
 
-    let baseSlug = toSlug(displayName)
-    if (!baseSlug) baseSlug = 'workspace'
-    // Truncate base to leave room for suffix -100 (max 4 chars) y límite 50
-    if (baseSlug.length > 50) baseSlug = baseSlug.slice(0, 50).replace(/-+$/g, '')
-
-    let finalSlug = baseSlug
-    // Verificar unicidad con SELECT workspaces where slug=candidate
-    let clash = await db.select().from(workspaces).where(eq(workspaces.slug, finalSlug)).get()
-    let counter = 2
-    while (clash && counter <= 100) {
-      const suffix = `-${counter}`
-      const maxBaseLen = 50 - suffix.length
-      const truncatedBase = baseSlug.slice(0, maxBaseLen).replace(/-+$/g, '')
-      finalSlug = `${truncatedBase}${suffix}`
-      clash = await db.select().from(workspaces).where(eq(workspaces.slug, finalSlug)).get()
-      counter++
-    }
-    if (clash) {
-      return NextResponse.json({ error: 'No se pudo generar slug único' }, { status: 409 })
-    }
+    const finalSlug = await generateUniqueSlug(displayName)
 
     const userId = uuidv4()
     const workspaceId = uuidv4()

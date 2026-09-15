@@ -14,7 +14,8 @@ export const createWorkspaceSchema = z.object({
     .trim()
     .min(3, 'El slug debe tener al menos 3 caracteres')
     .max(50, 'El slug no puede exceder 50 caracteres')
-    .regex(slugRegex, 'El slug solo puede contener letras minúsculas, números y guiones, y no puede empezar ni terminar con guión'),
+    .regex(slugRegex, 'El slug solo puede contener letras minúsculas, números y guiones, y no puede empezar ni terminar con guión')
+    .optional(),
 })
 
 export const updateWorkspaceSchema = z

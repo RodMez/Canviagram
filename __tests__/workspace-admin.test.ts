@@ -97,9 +97,64 @@ describe('workspace-admin service', () => {
     }
   })
 
-  // ============================================================
-  // PATCH workspace
-  // ============================================================
+// ============================================================
+// CREATE workspace
+// ============================================================
+
+describe('createWorkspace', () => {
+  it('crea workspace + fila member role owner con slug autogenerado del nombre', async () => {
+    const name = `Crear Test ${Date.now()}`
+    const { workspace } = await workspaceAdmin.createWorkspace(ownerId, { name })
+    expect(workspace.name).toBe(name)
+    expect(workspace.slug).toBeTypeOf('string')
+    expect(workspace.slug.length).toBeGreaterThan(0)
+    createdWorkspaceIds.push(workspace.id)
+
+    const member = await db.select().from(workspaceMembers).where(
+      and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, ownerId))
+    ).get()
+    expect(member?.role).toBe('owner')
+  })
+
+  it('slug explícito se respeta y valida', async () => {
+    const explicitSlug = `explicit-${Date.now()}`
+    const { workspace } = await workspaceAdmin.createWorkspace(ownerId, { name: 'Explicit', slug: explicitSlug })
+    expect(workspace.slug).toBe(explicitSlug)
+    createdWorkspaceIds.push(workspace.id)
+  })
+
+  it('slug explícito en uso → ConflictError sin crear', async () => {
+    await expect(workspaceAdmin.createWorkspace(ownerId, { name: 'X', slug: wsSlug })).rejects.toThrow()
+  })
+
+  it('nombre duplicado → slug autogenerado único con sufijo numérico', async () => {
+    const name = `Colisión Test ${Date.now()}`
+    const a = await workspaceAdmin.createWorkspace(ownerId, { name })
+    const b = await workspaceAdmin.createWorkspace(ownerId, { name })
+    createdWorkspaceIds.push(a.workspace.id, b.workspace.id)
+    expect(a.workspace.slug).not.toBe(b.workspace.slug)
+    expect(b.workspace.slug).toMatch(/-2$/)
+  })
+
+  it('nombre inválido → ValidationError', async () => {
+    await expect(workspaceAdmin.createWorkspace(ownerId, { name: 'x' })).rejects.toThrow()
+    await expect(workspaceAdmin.createWorkspace(ownerId, { name: '' })).rejects.toThrow()
+  })
+
+  it('deleteWorkspace con confirmSlug correcto resetea el activo Telegram antes de borrar', async () => {
+    const delId = uuidv4()
+    const delSlug = `del-reset-${delId.slice(0, 8)}`
+    await db.insert(workspaces).values({ id: delId, ownerId, name: 'Reset', slug: delSlug })
+    // El spy real consulta telegramChats (vacío en tests) — no lanza.
+    await expect(workspaceAdmin.deleteWorkspace(delId, ownerId, delSlug)).resolves.toBeUndefined()
+    const gone = await db.select().from(workspaces).where(eq(workspaces.id, delId)).get()
+    expect(gone).toBeUndefined()
+  })
+})
+
+// ============================================================
+// PATCH workspace
+// ============================================================
 
   describe('updateWorkspace', () => {
     it('owner puede cambiar name', async () => {

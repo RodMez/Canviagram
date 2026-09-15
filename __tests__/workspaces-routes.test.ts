@@ -168,6 +168,27 @@ describe('workspaces API routes', () => {
     }
   })
 
+  it('POST /api/workspaces sin slug auto-genera slug desde el nombre', async () => {
+    mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
+    const res = await postWorkspaces(
+      new Request('http://localhost/api/workspaces', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Auto Slug' }),
+      })
+    )
+    expect(res.status).toBe(201)
+    const json = await res.json()
+    expect(json.workspace.slug).toBe('auto-slug')
+    expect(json.workspace.name).toBe('Auto Slug')
+
+    const created = await db.select().from(workspaces).where(eq(workspaces.slug, 'auto-slug')).get()
+    if (created) {
+      await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, created.id))
+      await db.delete(workspaces).where(eq(workspaces.id, created.id))
+    }
+  })
+
   it('POST /api/workspaces slug duplicado 409', async () => {
     mockGetSession.mockResolvedValue({ userId: ownerId, token: 'tok' })
     const slug = `route-ws-${wsId.slice(0, 8)}` // ya existe

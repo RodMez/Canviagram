@@ -6,7 +6,8 @@ import { ROLE_RANK, assertWorkspaceAccess, assertCanAdmin } from '@/lib/auth/wor
 import { sendInvitation } from '@/lib/email/brevo'
 import { hashToken } from '@/lib/auth/tokens'
 import { ConflictError, ValidationError, NotFoundError, ForbiddenError, GoneError } from '@/lib/errors'
-import { updateWorkspaceSchema, inviteSchema, updateMemberRoleSchema } from '@/lib/validators/workspace'
+import { createWorkspaceSchema, updateWorkspaceSchema, inviteSchema, updateMemberRoleSchema } from '@/lib/validators/workspace'
+import { generateUniqueSlug } from '@/lib/workspace/slug'
 import { resetActiveWorkspacesByWorkspace } from '@/lib/telegram/chats'
 
 export const INVITE_TTL_DAYS = 7
@@ -81,6 +82,72 @@ function assertHierarchyRules(
   if (targetRank !== null && getRank(targetRank) === getRank(actorRank)) {
     throw new ForbiddenError('No tienes permisos para modificar a este miembro')
   }
+}
+
+// ============================================================
+// CREATE workspace
+// ============================================================
+
+/**
+ * Crea un workspace para `userId` (owner) con su fila member (role owner).
+ * Si no se provee slug, se autogenera uno único desde el nombre
+ * (generateUniqueSlug). Es la fuente única de creación (web y bot):
+ * POST /api/workspaces delega aquí.
+ */
+export async function createWorkspace(
+  userId: string,
+  input: { name: string; slug?: string | null }
+): Promise<{ workspace: typeof workspaces.$inferSelect }> {
+  const proposedSlug = input.slug?.trim() ?? (await generateUniqueSlug(input.name))
+  let parsed: ReturnType<typeof createWorkspaceSchema.parse>
+  try {
+    parsed = createWorkspaceSchema.parse({ name: input.name, slug: proposedSlug })
+  } catch (e) {
+    handleZodError(e)
+  }
+
+  if (input.slug?.trim()) {
+    const slugTaken = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.slug, proposedSlug))
+      .get()
+    if (slugTaken) throw new ConflictError('El slug ya está en uso')
+  }
+
+  const now = new Date()
+  const workspaceId = uuidv4()
+  const memberId = uuidv4()
+  db.transaction((tx) => {
+    tx.insert(workspaces)
+      .values({
+        id: workspaceId,
+        ownerId: userId,
+        name: parsed!.name,
+        slug: proposedSlug,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+    tx.insert(workspaceMembers)
+      .values({
+        id: memberId,
+        workspaceId,
+        userId,
+        role: 'owner',
+        joinedAt: now,
+        createdAt: now,
+      })
+      .run()
+  })
+
+  const created = db
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .get()
+
+  return { workspace: created! }
 }
 
 // ============================================================
@@ -166,7 +233,11 @@ export async function deleteWorkspace(
     throw new ValidationError('El slug de confirmación no coincide')
   }
 
-  // Un solo DELETE; cascade FK cubre nodes/edges/workspaceMembers/invitations/telegramChats
+  // El vínculo Telegram es por CUENTA (no por workspace): antes de borrar se
+  // quita el workspace activo de los chats para no colapsar el vínculo global
+  // por el cascade FK. Luego un solo DELETE; cascade FK cubre
+  // nodes/edges/workspaceMembers/invitations.
+  await resetActiveWorkspacesByWorkspace(workspaceId)
   db.transaction((tx) => {
     tx.delete(workspaces).where(eq(workspaces.id, workspaceId)).run()
   })
