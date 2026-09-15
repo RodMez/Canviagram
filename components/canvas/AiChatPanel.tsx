@@ -126,6 +126,76 @@ function dispatchLayoutGraphResult(output: unknown, dispatch: (event: ApplyEvent
   }
 }
 
+// ============================================================
+// Feedback visible de las tools (web REAL): reduce las tool parts
+// ejecutadas del turno a una línea resumen ("creé 2 nodos · 1 conexión").
+// Consume el mismo Set de dedupe por toolCallId (cada snapshot del
+// stream re-emite el mensaje completo). Puro y testable sin DOM.
+// ============================================================
+const TOOL_VERB_NOUN: Record<string, { v: string; s: string; p: string }> = {
+  createNode: { v: 'creé', s: '1 nodo', p: 'N nodos' },
+  updateNode: { v: 'actualicé', s: '1 nodo', p: 'N nodos' },
+  deleteNode: { v: 'borré', s: '1 nodo', p: 'N nodos' },
+  createEdge: { v: 'creé', s: '1 conexión', p: 'N conexiones' },
+  deleteEdge: { v: 'borré', s: '1 conexión', p: 'N conexiones' },
+}
+
+export function summarizeToolParts(
+  parts: UIMessage['parts'],
+  appliedToolCalls: Set<string>
+): string | null {
+  const counts = new Map<string, number>()
+  const createdWs: string[] = []
+  const renamedWs: string[] = []
+  const switchedWs: string[] = []
+  let relayout = false
+
+  for (const part of parts) {
+    if (!isStaticToolUIPart(part)) continue
+    if (part.state !== 'output-available') continue
+    if (appliedToolCalls.has(part.toolCallId)) continue
+    appliedToolCalls.add(part.toolCallId)
+    const toolName = getStaticToolName(part)
+    if (toolName === 'layoutGraph') {
+      relayout = true
+      continue
+    }
+    if (toolName in TOOL_VERB_NOUN) {
+      counts.set(toolName, (counts.get(toolName) ?? 0) + 1)
+      continue
+    }
+    const w = (part.output as { workspace?: { name?: string } })?.workspace?.name
+    if (toolName === 'createWorkspace' && w) createdWs.push(w)
+    else if (toolName === 'renameWorkspace' && w) renamedWs.push(w)
+    else if (toolName === 'switchWorkspace' && w) switchedWs.push(w)
+  }
+
+  const fragments: string[] = []
+  for (const [toolName, n] of counts) {
+    const meta = TOOL_VERB_NOUN[toolName]!
+    fragments.push(n === 1 ? `${meta.v} ${meta.s}` : `${meta.v} ${meta.p.replace('N', String(n))}`)
+  }
+  if (relayout) fragments.push('reorganicé el layout')
+  if (createdWs.length) fragments.push(`creé el workspace ${createdWs.join(', ')}`)
+  if (renamedWs.length) fragments.push(`renombré ${renamedWs.join(', ')}`)
+  if (switchedWs.length) fragments.push(`cambiando a ${switchedWs.join(', ')}`)
+  return fragments.length > 0 ? fragments.join(' · ') : null
+}
+
+// Extrae el destino de la tool switchWorkspace (si se ejecutó en el stream).
+export function extractSwitchToolPart(
+  parts: UIMessage['parts']
+): { id: string; slug: string } | null {
+  for (const part of parts) {
+    if (!isStaticToolUIPart(part)) continue
+    if (part.state !== 'output-available') continue
+    if (getStaticToolName(part) !== 'switchWorkspace') continue
+    const w = (part.output as { workspace?: { id?: string; slug?: string } })?.workspace
+    if (w?.id && w?.slug) return { id: w.id, slug: w.slug }
+  }
+  return null
+}
+
 // Chat IA (Diseño 12.2). Consume el UIMessageStream SSE que devuelve el route
 // /api/ai/chat (F3.4d, M2): `createUIMessageStreamResponse`. Acumula el texto del
 // asistente en el último mensaje assistant; los tool calls no se muestran como texto
@@ -140,9 +210,12 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
   const [status, setStatus] = useState<'idle' | 'streaming' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const [toolSummary, setToolSummary] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string; slug: string } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   // Dedupe por toolCallId por turno: el snapshot del mensaje se re-emite en cada chunk.
   const appliedToolCallsRef = useRef<Set<string>>(new Set())
+  const switchedRef = useRef(false)
 
   const isDemo = isDemoWorkspace(workspaceId)
   const nodes = useCanvasStore(selectNodes)
@@ -219,13 +292,34 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
     }
   }, [workspaceId, isDemo])
 
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDelete) return
+    try {
+      const res = await fetch(`/api/workspaces/${pendingDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmSlug: pendingDelete.slug }),
+      })
+      if (!res.ok) throw new Error(`delete failed (${res.status})`)
+      setPendingDelete(null)
+      router.push('/workspaces')
+    } catch (err) {
+      console.error('[AiChatPanel] no se pudo borrar el workspace', err)
+      setErrorMessage('No se pudo borrar el workspace.')
+      setPendingDelete(null)
+    }
+  }, [pendingDelete, router])
+
   const handleSubmit = useCallback(async () => {
     const text = input.trim()
     if (!text || status === 'streaming') return
     setInput('')
     setStatus('streaming')
     setErrorMessage(null)
+    setToolSummary(null)
+    setPendingDelete(null)
     appliedToolCallsRef.current = new Set()
+    switchedRef.current = false
 
     const userMsg: ChatMessage = { role: 'user', content: text }
     const history = [...messages, userMsg]
@@ -258,13 +352,19 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
         throw new Error(`Chat falló (${res.status})`)
       }
 
-      // Paridad con el bot: el server puede responder JSON { switch } /
-      // { switchOptions } en vez de stream (cambio de workspace por NL).
+      // Paridad con el bot: el server puede responder JSON en vez de stream para
+      // intents determinísticos: { switch }, { switchOptions } o borrado con
+      // confirmación ({ deleteConfirm } / deleteOptions / deleteNotFound / deleteGuide).
       const contentType = res.headers.get('content-type') ?? ''
       if (!isDemo && contentType.includes('application/json')) {
         const data = (await res.json()) as {
           switch?: { id: string; name: string; slug: string; alreadyActive?: boolean }
           switchOptions?: { query: string; matches: { id: string; name: string; slug: string }[] }
+          deleteConfirm?: { id: string; name: string; slug: string }
+          deleteDenied?: { name: string }
+          deleteOptions?: { query: string; matches: { id: string; name: string; slug: string }[] }
+          deleteNotFound?: { query: string; names: string[] }
+          deleteGuide?: boolean
         }
         if (data.switch) {
           if (data.switch.alreadyActive) {
@@ -285,7 +385,63 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
           const names = data.switchOptions.matches.map((m) => m.name).join(', ')
           const assistantMsg: ChatMessage = {
             role: 'assistant',
-            content: `Encontré ${data.switchOptions.matches.length} workspaces para "${data.switchOptions.query}": ${names}. Precisa con "usa <nombre>" o elígeme uno.`,
+            content:
+              data.switchOptions.query
+                ? `Encontré ${data.switchOptions.matches.length} workspaces para "${data.switchOptions.query}": ${names}. Precisa con "usa <nombre>" o elígeme uno.`
+                : `¿A cuál workspace quieres cambiar? Los disponibles: ${names}. Di "usa <nombre>".`,
+          }
+          setMessages((prev) => [...prev, assistantMsg])
+          await persistTurn(userMsg, assistantMsg)
+          setStatus('idle')
+          return
+        }
+        if (data.deleteConfirm) {
+          const assistantMsg: ChatMessage = {
+            role: 'assistant',
+            content: `¿Confirmo que quieres borrar el workspace «${data.deleteConfirm.name}»? Esta acción es irreversible.`,
+          }
+          setMessages((prev) => [...prev, assistantMsg])
+          setPendingDelete(data.deleteConfirm)
+          await persistTurn(userMsg, assistantMsg)
+          setStatus('idle')
+          return
+        }
+        if (data.deleteDenied) {
+          const assistantMsg: ChatMessage = {
+            role: 'assistant',
+            content: `Solo el propietario puede borrar el workspace «${data.deleteDenied.name}».`,
+          }
+          setMessages((prev) => [...prev, assistantMsg])
+          await persistTurn(userMsg, assistantMsg)
+          setStatus('idle')
+          return
+        }
+        if (data.deleteOptions) {
+          const names = data.deleteOptions.matches.map((m) => m.name).join(', ')
+          const assistantMsg: ChatMessage = {
+            role: 'assistant',
+            content: `Encontré ${data.deleteOptions.matches.length} workspaces para "${data.deleteOptions.query}": ${names}. Precisa con "borra <nombre>".`,
+          }
+          setMessages((prev) => [...prev, assistantMsg])
+          await persistTurn(userMsg, assistantMsg)
+          setStatus('idle')
+          return
+        }
+        if (data.deleteNotFound) {
+          const names = data.deleteNotFound.names.join(', ')
+          const assistantMsg: ChatMessage = {
+            role: 'assistant',
+            content: `No encontré el workspace «${data.deleteNotFound.query}». Tus workspaces: ${names || '(ninguno)'}.`,
+          }
+          setMessages((prev) => [...prev, assistantMsg])
+          await persistTurn(userMsg, assistantMsg)
+          setStatus('idle')
+          return
+        }
+        if (data.deleteGuide) {
+          const assistantMsg: ChatMessage = {
+            role: 'assistant',
+            content: '¿Cuál workspace quieres borrar? Di por ejemplo: "borra el workspace Mi Proyecto". Tiene confirmación.',
           }
           setMessages((prev) => [...prev, assistantMsg])
           await persistTurn(userMsg, assistantMsg)
@@ -310,9 +466,20 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
         },
         {
           // Modo demo: traduce cada tool-result a un evento local (publish local).
+          // Modo real: detecta switchWorkspace para navegar y resume las tools
+          // ejecutadas como feedback visible bajo la respuesta.
           onMessage: (message) => {
-            if (!isDemo) return
-            applyToolResultToCanvas(message.parts, applyLocalEvent, appliedToolCallsRef.current)
+            if (isDemo) {
+              applyToolResultToCanvas(message.parts, applyLocalEvent, appliedToolCallsRef.current)
+            } else if (!switchedRef.current) {
+              const target = extractSwitchToolPart(message.parts)
+              if (target) {
+                switchedRef.current = true
+                router.push(`/w/${target.slug}`)
+              }
+            }
+            const summary = summarizeToolParts(message.parts, appliedToolCallsRef.current)
+            if (summary) setToolSummary(summary)
           },
         }
       )
@@ -389,6 +556,37 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
         )}
         {status === 'error' && (
           <p className="text-xs text-destructive">{errorMessage ?? 'Error al conectar con la IA.'}</p>
+        )}
+        {toolSummary && status !== 'streaming' && (
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-xs text-emerald-700">
+            ✓ {toolSummary}
+          </div>
+        )}
+        {pendingDelete && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+            <p className="font-medium text-destructive">
+              ¿Borrar el workspace «{pendingDelete.name}»?
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Esta acción es irreversible: se eliminan nodos, conexiones, tareas y miembros.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="rounded bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition-opacity active:opacity-80"
+              >
+                Sí, borrar
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className="rounded border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

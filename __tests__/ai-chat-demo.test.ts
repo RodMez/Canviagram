@@ -23,7 +23,7 @@ import type { UIMessage } from 'ai'
 import { buildDemoTools } from '@/lib/ai/tools-demo'
 import { getDemoFixtures } from '@/lib/demo/fixtures'
 import { cloneGraph } from '@/lib/demo/graph-ops'
-import { demoToolResultToEvent, applyToolResultToCanvas } from '@/components/canvas/AiChatPanel'
+import { demoToolResultToEvent, applyToolResultToCanvas, summarizeToolParts, extractSwitchToolPart } from '@/components/canvas/AiChatPanel'
 
 const mAIEnabled = vi.mocked(isAIEnabled)
 const mGetLLM = vi.mocked(getLLM)
@@ -376,5 +376,66 @@ describe('applyToolResultToCanvas — tool-result v7 → evento local (H1)', () 
       event: 'node:deleted',
       data: { id: 'n-1', workspaceId: 'demo' },
     })
+  })
+})
+
+describe('summarizeToolParts (feedback visible de tools, web real)', () => {
+  function part(tool: string, id: string, output: unknown) {
+    return { type: `tool-${tool}`, toolCallId: id, state: 'output-available', input: {}, output } as unknown as UIMessage['parts'][number]
+  }
+
+  it('resume nodos/conexiones y layout en una línea', () => {
+    const applied = new Set<string>()
+    const parts = [
+      part('createNode', 'call-1', { id: 'n1' }),
+      part('createNode', 'call-2', { id: 'n2' }),
+      part('createEdge', 'call-3', { id: 'e1' }),
+      part('layoutGraph', 'call-4', { repositioned: 3 }),
+    ]
+    expect(summarizeToolParts(parts as UIMessage['parts'], applied)).toBe('creé 2 nodos · creé 1 conexión · reorganicé el layout')
+  })
+
+  it('dedupe por toolCallId: el snapshot se re-emite en cada chunk', () => {
+    const applied = new Set<string>()
+    const parts = [
+      part('updateNode', 'call-9', { id: 'n1' }),
+      part('updateNode', 'call-9', { id: 'n1' }),
+    ]
+    expect(summarizeToolParts(parts as UIMessage['parts'], applied)).toBe('actualicé 1 nodo')
+    expect(applied.size).toBe(1)
+  })
+
+  it('workspace tools: crear/renombrar/cambiar por nombre', () => {
+    const applied = new Set<string>()
+    const parts = [
+      part('createWorkspace', 'call-5', { workspace: { id: 'wsA', name: 'Mi Proyecto', slug: 'mi-proyecto' } }),
+      part('renameWorkspace', 'call-6', { workspace: { id: 'wsB', name: 'Beta Renombrado', slug: 'beta' } }),
+      part('switchWorkspace', 'call-7', { workspace: { id: 'wsA', name: 'Mi Proyecto', slug: 'mi-proyecto' } }),
+    ]
+    expect(summarizeToolParts(parts as UIMessage['parts'], applied)).toBe(
+      'creé el workspace Mi Proyecto · renombré Beta Renombrado · cambiando a Mi Proyecto'
+    )
+  })
+
+  it('sin output-available o toolCallId ya visto → null', () => {
+    const applied = new Set<string>(['call-9'])
+    const parts = [part('createNode', 'call-9', { id: 'n1' })]
+    expect(summarizeToolParts(parts as UIMessage['parts'], applied)).toBeNull()
+  })
+})
+
+describe('extractSwitchToolPart (navegación web tras switchWorkspace)', () => {
+  it('detecta la tool switchWorkspace en el snapshot y devuelve id+slug', () => {
+    const parts = [
+      { type: 'tool-switchWorkspace', toolCallId: 'call-7', state: 'output-available', input: { workspaceQuery: 'alfa' }, output: { workspace: { id: 'wsA', name: 'Proyecto Alfa', slug: 'proyecto-alfa' } } },
+    ] as unknown as UIMessage['parts']
+    expect(extractSwitchToolPart(parts)).toEqual({ id: 'wsA', slug: 'proyecto-alfa' })
+  })
+
+  it('ignora tools que no son switchWorkspace', () => {
+    const parts = [
+      { type: 'tool-createNode', toolCallId: 'call-1', state: 'output-available', input: {}, output: { id: 'n1' } },
+    ] as unknown as UIMessage['parts']
+    expect(extractSwitchToolPart(parts)).toBeNull()
   })
 })
