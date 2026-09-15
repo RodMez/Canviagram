@@ -18,7 +18,8 @@ import { isAIEnabled, callWithFallback } from '@/lib/ai/provider'
 import { getWorkspaceGraph } from '@/lib/canvas-service'
 import { listWorkspacesForUser } from '@/lib/canvas/workspace-by-slug'
 import { assertWorkspaceAccess } from '@/lib/auth/workspace-access'
-import { ForbiddenError, NotFoundError } from '@/lib/errors'
+import { ForbiddenError, NotFoundError, ConflictError, ValidationError } from '@/lib/errors'
+import { createWorkspace, updateWorkspace, deleteWorkspace } from '@/lib/workspace-admin'
 import { buildTools } from '@/lib/ai/tools'
 import {
   buildTelegramChatKey,
@@ -32,6 +33,8 @@ import {
   normalizeWs as sharedNormalizeWs,
   matchWorkspace as sharedMatchWorkspace,
   extractSwitchQuery,
+  extractDeleteQuery,
+  resolveSwitchTarget,
   type WorkspaceListItem as SharedWorkspaceListItem,
 } from '@/lib/workspace/switch'
 
@@ -43,7 +46,22 @@ export { escapeHtml }
 // Helpers puros (exportados para tests — diseño F4.2 §4.1 N4)
 // ============================================================
 
-const KNOWN_COMMANDS = new Set(['start', 'help', 'ayuda', 'link', 'unlink', 'lista', 'usar', 'estado'])
+const KNOWN_COMMANDS = new Set([
+  'start',
+  'help',
+  'ayuda',
+  'link',
+  'unlink',
+  'lista',
+  'usar',
+  'estado',
+  'crear',
+  'nuevo',
+  'renombrar',
+  'editar',
+  'borrar',
+  'eliminar',
+])
 
 export type ParsedCommand =
   | { kind: 'command'; name: string; args: string[] }
@@ -228,6 +246,8 @@ ${formatMemory(memory)}
 - En tu respuesta visible NUNCA muestres IDs largos/UUIDs: resume con **títulos en negrita**,
   estado, responsable, prioridad, esfuerzo y fecha. Usa encabezados con # y listas con - para
   que se vean títulos y negritas en Telegram. Información útil, no técnica.
+- Tras ejecutar una tool (crear/actualizar/borrar/conectar/renombrar), resume brevemente QUÉ
+  cambió (con títulos y cantidades, sin IDs).
 - Si es saludo, pregunta o tema fuera del canvas, responde de forma breve y amable.
 - Si una herramienta falla (permisos o validación), informa del error y sugiere una corrección.
 - Responde en Markdown simple: usa **negrita**, *cursiva*, \`código\`, \`\`\`bloque\`\`\`
@@ -243,6 +263,7 @@ ${formatMemory(memory)}
 export interface TelegramReplyCtx {
   chatId: string
   tgUserId: string
+  typing?: () => Promise<unknown>
   reply(text: string, other?: { parse_mode?: 'HTML'; reply_markup?: InlineKeyboardMarkup }): Promise<unknown>
 }
 
@@ -337,7 +358,7 @@ export async function handleList(ctx: TelegramReplyCtx): Promise<void> {
 
   const list = await listWorkspacesForUser(binding.userId)
   if (list.length === 0) {
-    await ctx.reply('No tienes workspaces todavía. Crea uno desde la web de Canviagram.', { parse_mode: 'HTML' })
+    await ctx.reply('No tienes workspaces todavía. Crea uno con /crear NOMBRE.', { parse_mode: 'HTML' })
     return
   }
 
@@ -368,7 +389,7 @@ export async function handleUseFuzzy(ctx: TelegramReplyCtx, query: string): Prom
 
   const list = await listWorkspacesForUser(binding.userId)
   if (list.length === 0) {
-    await ctx.reply('No tienes workspaces todavía. Crea uno desde la web de Canviagram.', { parse_mode: 'HTML' })
+    await ctx.reply('No tienes workspaces todavía. Crea uno con /crear NOMBRE.', { parse_mode: 'HTML' })
     return
   }
 
@@ -479,6 +500,197 @@ export async function handleWorkspaceCallback(ctx: TelegramCallbackCtx): Promise
   }
 }
 
+// Teclado de confirmación de borrado (anti-spoof; el owner se revalida al confirmar).
+export function buildDeleteConfirmKeyboard(workspaceId: string): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: '✅ Sí, borrar', callback_data: `wdel:${workspaceId}` },
+        { text: '❌ Cancelar', callback_data: `wcnl:${workspaceId}` },
+      ],
+    ],
+  }
+}
+
+/**
+ * /crear <Nombre> — crea un workspace con slug autogenerado y lo deja activo.
+ */
+export async function handleCreateWorkspace(ctx: TelegramReplyCtx, name: string): Promise<void> {
+  const binding = await findBinding(ctx.chatId, ctx.tgUserId)
+  if (!binding) {
+    await ctx.reply('Este chat no está vinculado a ninguna cuenta. Usa /link CÓDIGO primero.', {
+      parse_mode: 'HTML',
+    })
+    return
+  }
+  const trimmed = name.trim()
+  if (trimmed.length < 2 || trimmed.length > 100) {
+    await ctx.reply('El nombre del workspace debe tener entre 2 y 100 caracteres.', { parse_mode: 'HTML' })
+    return
+  }
+  try {
+    const { workspace } = await createWorkspace(binding.userId, { name: trimmed })
+    await setActiveWorkspace(ctx.chatId, ctx.tgUserId, workspace.id)
+    await ctx.reply(
+      `✅ Workspace <b>${escapeHtml(workspace.name)}</b> creado (<code>${escapeHtml(workspace.slug)}</code>). Es tu workspace activo. Envía un mensaje para trabajar en él.`,
+      { parse_mode: 'HTML' }
+    )
+  } catch (error) {
+    if (error instanceof ConflictError) {
+      await ctx.reply(`No se pudo crear el workspace: ${error.message}`, { parse_mode: 'HTML' })
+      return
+    }
+    throw error
+  }
+}
+
+/**
+ * /renombrar <Nombre> — renombra el workspace ACTIVO (el slug nunca cambia).
+ * Solo el propietario o un admin (assertCanAdmin via updateWorkspace).
+ */
+export async function handleRenameWorkspace(ctx: TelegramReplyCtx, name: string): Promise<void> {
+  const binding = await findBinding(ctx.chatId, ctx.tgUserId)
+  if (!binding) {
+    await ctx.reply('Este chat no está vinculado a ninguna cuenta. Usa /link CÓDIGO primero.', {
+      parse_mode: 'HTML',
+    })
+    return
+  }
+  if (!binding.activeWorkspaceId) {
+    await ctx.reply('Este chat no tiene un workspace activo. Elige uno con /lista y /usar.', { parse_mode: 'HTML' })
+    return
+  }
+  const trimmed = name.trim()
+  if (trimmed.length < 2 || trimmed.length > 100) {
+    await ctx.reply('El nombre del workspace debe tener entre 2 y 100 caracteres.', { parse_mode: 'HTML' })
+    return
+  }
+  try {
+    const { workspace } = await updateWorkspace(binding.activeWorkspaceId, binding.userId, { name: trimmed })
+    await ctx.reply(
+      `✅ Workspace renombrado a <b>${escapeHtml(workspace.name)}</b> (<code>${escapeHtml(workspace.slug)}</code> no cambia).`,
+      { parse_mode: 'HTML' }
+    )
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      await ctx.reply('No tienes permisos para renombrar este workspace (solo el propietario o un admin).', {
+        parse_mode: 'HTML',
+      })
+      return
+    }
+    if (error instanceof ValidationError) {
+      await ctx.reply(error.message, { parse_mode: 'HTML' })
+      return
+    }
+    throw error
+  }
+}
+
+/**
+ * /borrar — pide confirmación inline para borrar el workspace ACTIVO (solo owner).
+ */
+export async function handleDeleteWorkspace(ctx: TelegramReplyCtx): Promise<void> {
+  const binding = await findBinding(ctx.chatId, ctx.tgUserId)
+  if (!binding) {
+    await ctx.reply('Este chat no está vinculado a ninguna cuenta. Usa /link CÓDIGO primero.', {
+      parse_mode: 'HTML',
+    })
+    return
+  }
+  if (!binding.activeWorkspaceId) {
+    await ctx.reply('Este chat no tiene un workspace activo. Elige uno con /lista y /usar.', { parse_mode: 'HTML' })
+    return
+  }
+  const ws = await db
+    .select({ id: workspaces.id, name: workspaces.name, slug: workspaces.slug, ownerId: workspaces.ownerId })
+    .from(workspaces)
+    .where(eq(workspaces.id, binding.activeWorkspaceId))
+    .get()
+  if (!ws) {
+    await resetActiveWorkspace(ctx.chatId, ctx.tgUserId)
+    await ctx.reply('Este workspace ya no está disponible. Usa /lista para ver los que quedan.', { parse_mode: 'HTML' })
+    return
+  }
+  if (ws.ownerId !== binding.userId) {
+    await ctx.reply('Solo el propietario puede borrar el workspace. Los miembros deben usar /lista.', { parse_mode: 'HTML' })
+    return
+  }
+  await ctx.reply(
+    `⚠️ ¿Borrar el workspace «${escapeHtml(ws.name)}»?\nEsta acción es irreversible: se eliminan nodos, conexiones, tareas y miembros.`,
+    { parse_mode: 'HTML', reply_markup: buildDeleteConfirmKeyboard(ws.id) }
+  )
+}
+
+/**
+ * Callback "wdel:<uuid>": confirma el borrado. Revalida binding, existencia y
+ * propiedad ANTES de borrar (anti-spoof: código de botón manipulado).
+ */
+export async function handleDeleteConfirmCallback(ctx: TelegramCallbackCtx): Promise<void> {
+  const data = ctx.callbackData ?? ''
+  const prefix = 'wdel:'
+  if (!data.startsWith(prefix)) {
+    await ctx.answerCallback('Acción no reconocida')
+    return
+  }
+  const id = data.slice(prefix.length)
+  if (!UUID_RE.test(id)) {
+    await ctx.answerCallback('Solicitud inválida')
+    return
+  }
+  const binding = await findBinding(ctx.chatId, ctx.tgUserId)
+  if (!binding) {
+    await ctx.answerCallback('Chat no vinculado')
+    await ctx.reply('Este chat no está vinculado a ninguna cuenta. Usa /link CÓDIGO primero.', {
+      parse_mode: 'HTML',
+    })
+    return
+  }
+  const ws = await db
+    .select({ name: workspaces.name, slug: workspaces.slug, ownerId: workspaces.ownerId })
+    .from(workspaces)
+    .where(eq(workspaces.id, id))
+    .get()
+  if (!ws) {
+    await ctx.answerCallback('El workspace ya no existe')
+    await ctx.reply('El workspace ya no existe.', { parse_mode: 'HTML' })
+    return
+  }
+  if (ws.ownerId !== binding.userId) {
+    await ctx.answerCallback('Solo el propietario puede borrar')
+    await ctx.reply('Solo el propietario puede borrar este workspace.', { parse_mode: 'HTML' })
+    return
+  }
+  try {
+    await deleteWorkspace(id, binding.userId, ws.slug)
+    await ctx.answerCallback('✅ Workspace borrado')
+    await ctx.reply(`✅ Workspace <b>${escapeHtml(ws.name)}</b> borrado. Usa /lista para ver los que quedan.`, {
+      parse_mode: 'HTML',
+    })
+  } catch (error) {
+    await ctx.answerCallback('Ups, algo falló. Inténtalo de nuevo.')
+    throw error
+  }
+}
+
+/**
+ * Callback "wcnl:<uuid>": cancela el borrado.
+ */
+export async function handleDeleteCancelCallback(ctx: TelegramCallbackCtx): Promise<void> {
+  const data = ctx.callbackData ?? ''
+  const prefix = 'wcnl:'
+  if (!data.startsWith(prefix)) {
+    await ctx.answerCallback('Acción no reconocida')
+    return
+  }
+  const id = data.slice(prefix.length)
+  if (!UUID_RE.test(id)) {
+    await ctx.answerCallback('Solicitud inválida')
+    return
+  }
+  await ctx.answerCallback('Cancelado')
+  await ctx.reply('Listo, no se borró nada.', { parse_mode: 'HTML' })
+}
+
 /**
  * /estado — diagnóstico del vínculo: cuenta, workspace activo (+ slug), última actividad.
  * (El usuario pregunta "¿está o no desconectado?" → esta respuesta es la fuente.)
@@ -533,44 +745,91 @@ export async function handleMessage(ctx: TelegramReplyCtx, text: string): Promis
   }
 
   // Auto-switch por lenguaje natural ANTES de todo lo costoso (sin LLM, sin
-  // grafo): "usar X" / "cambia a X" con q>=2 y sin newline. 1 match → cambia,
-  // N → desambigua con botones, 0 → fallthrough al LLM.
-  // (Se intercepta aquí —antes de workspace activo/IA/grafo— para que cambiar
-  // funcione incluso sin activo o con IA deshabilitada; sigue siendo "antes de
-  // getWorkspaceGraph" como pide el diseño.)
-  const switchMatch = text.trim().match(SWITCH_RE)
-  if (switchMatch) {
-    const q = (switchMatch[1] ?? '').trim()
-    if (q.length >= 2 && !q.includes('\n')) {
-      const candidates = await listWorkspacesForUser(binding.userId)
-      if (candidates.length > 0) {
-        const matches = matchWorkspace(q, candidates)
-        if (matches.length === 1) {
-          const ws = matches[0]!
-          try {
-            const { workspace } = await assertWorkspaceAccess(ws.id, binding.userId, 'viewer')
-            await setActiveWorkspace(ctx.chatId, ctx.tgUserId, ws.id)
-            await touchLastActivity(ctx.chatId, ctx.tgUserId)
-            await ctx.reply(
-              `✅ Workspace activo: <b>${escapeHtml(workspace.name)}</b> (<code>${escapeHtml(workspace.slug)}</code>). Envía un mensaje para trabajar en él.`,
-              { parse_mode: 'HTML' }
-            )
-            return
-          } catch (error) {
-            if (!(error instanceof ForbiddenError || error instanceof NotFoundError)) throw error
-            // Sin acceso (revocado entre lista y assert): fallthrough al flujo
-            // normal, que reseteará el activo si el grafo ya no es accesible.
-          }
-        } else if (matches.length > 1) {
-          await ctx.reply(`¿Cuál quieres usar? Encontré ${matches.length} para «${escapeHtml(q)}»:`, {
-            parse_mode: 'HTML',
-            reply_markup: buildWorkspaceKeyboard(matches, binding.activeWorkspaceId),
-          })
-          return
-        }
-        // 0 matches → fallthrough al LLM.
+  // grafo): "usar X", "cámbiame a X", "cambia de workspace", etc.
+  // 1 match → cambia; N → desambigua con botones; target vacío/filler
+  // ("cambia de workspace") → selector de workspaces; 0 → fallthrough al LLM.
+  const switchQuery = extractSwitchQuery(text)
+  if (switchQuery) {
+    const target = await resolveSwitchTarget(binding.userId, switchQuery)
+    if (target.kind === 'single') {
+      try {
+        const { workspace } = await assertWorkspaceAccess(target.workspace.id, binding.userId, 'viewer')
+        await setActiveWorkspace(ctx.chatId, ctx.tgUserId, target.workspace.id)
+        await touchLastActivity(ctx.chatId, ctx.tgUserId)
+        await ctx.reply(
+          `✅ Workspace activo: <b>${escapeHtml(workspace.name)}</b> (<code>${escapeHtml(workspace.slug)}</code>). Envía un mensaje para trabajar en él.`,
+          { parse_mode: 'HTML' }
+        )
+        return
+      } catch (error) {
+        if (!(error instanceof ForbiddenError || error instanceof NotFoundError)) throw error
+        // Sin acceso (revocado entre lista y assert): fallthrough al flujo
+        // normal, que reseteará el activo si el grafo ya no es accesible.
       }
+    } else if (target.kind === 'multi') {
+      await ctx.reply(`¿Cuál quieres usar? Encontré ${target.matches.length} para «${escapeHtml(target.query)}»:`, {
+        parse_mode: 'HTML',
+        reply_markup: buildWorkspaceKeyboard(target.matches, binding.activeWorkspaceId),
+      })
+      return
+    } else if (target.kind === 'unspecified') {
+      const list = await listWorkspacesForUser(binding.userId)
+      if (list.length === 0) {
+        await ctx.reply('No tienes workspaces todavía. Crea uno con /crear NOMBRE.', { parse_mode: 'HTML' })
+        return
+      }
+      await ctx.reply('¿A cuál workspace quieres cambiar?', {
+        parse_mode: 'HTML',
+        reply_markup: buildWorkspaceKeyboard(list, binding.activeWorkspaceId),
+      })
+      return
     }
+    // 'none' | 'empty' => fallthrough al LLM.
+  }
+
+  // Borrado por lenguaje natural: NUNCA ejecuta directo; pide confirmación
+  // inline (owner). Si viene un target concreto de un workspace owned → botones.
+  const deleteQuery = extractDeleteQuery(text)
+  if (deleteQuery) {
+    const target = await resolveSwitchTarget(binding.userId, deleteQuery)
+    if (target.kind === 'single') {
+      const ws = await db
+        .select({ ownerId: workspaces.ownerId })
+        .from(workspaces)
+        .where(eq(workspaces.id, target.workspace.id))
+        .get()
+      if (!ws) {
+        await ctx.reply('El workspace ya no existe.', { parse_mode: 'HTML' })
+        return
+      }
+      if (ws.ownerId !== binding.userId) {
+        await ctx.reply('Solo el propietario puede borrar un workspace.', { parse_mode: 'HTML' })
+        return
+      }
+      await ctx.reply(
+        `⚠️ ¿Borrar el workspace «${escapeHtml(target.workspace.name)}»?\nEsta acción es irreversible: se eliminan nodos, conexiones, tareas y miembros.`,
+        { parse_mode: 'HTML', reply_markup: buildDeleteConfirmKeyboard(target.workspace.id) }
+      )
+      return
+    }
+    if (target.kind === 'multi') {
+      await ctx.reply(
+        `Encontré ${target.matches.length} workspaces para «${escapeHtml(target.query)}»: ${target.matches.map((w) => escapeHtml(w.name)).join(', ')}. Precisa con "borra <nombre>".`,
+        { parse_mode: 'HTML' }
+      )
+      return
+    }
+    if (target.kind === 'none') {
+      await ctx.reply(`No encontré el workspace «${escapeHtml(deleteQuery)}». Usa /lista para ver los disponibles.`, {
+        parse_mode: 'HTML',
+      })
+      return
+    }
+    // unspecified | empty → guía.
+    await ctx.reply('¿Cuál workspace quieres borrar? Di por ejemplo: "borra el workspace Nombre". La acción requiere tu confirmación.', {
+      parse_mode: 'HTML',
+    })
+    return
   }
 
   const wsId = binding.activeWorkspaceId
@@ -624,10 +883,15 @@ export async function handleMessage(ctx: TelegramReplyCtx, text: string): Promis
   const chatKey = buildTelegramChatKey(ctx.chatId, ctx.tgUserId)
   const memory = await listChatMessages({ workspaceId: wsId, chatKey, limit: TELEGRAM_MEMORY_MAX })
 
+  // Typing indicator mientras el LLM procesa (Telegram no muestra "no response").
+  // Best-effort: si falla (permisos/rate-limit) no debe romper la respuesta.
+  await ctx.typing?.().catch(() => {})
+
   // Paridad con el chat web: el LLM actúa sobre el canvas real con las MISMAS
-  // tools (createNode/updateNode/deleteNode/createEdge/deleteEdge/queryGraph/listMembers).
-  // stopWhen limita las iteraciones tool-use (isStepCount(4) ajustado al bot).
-  const { text: raw } = await callWithFallback((model) =>
+  // tools (createNode/updateNode/deleteNode/createEdge/deleteEdge/queryGraph/
+  // listMembers/layoutGraph + workspace ops). stopWhen limita iteraciones
+  // tool-use (isStepCount(4) ajustado al bot).
+  const result = await callWithFallback((model) =>
     generateText({
       model,
       system: buildTelegramSystemPrompt(workspaceName, graph, memory, members),
@@ -637,7 +901,28 @@ export async function handleMessage(ctx: TelegramReplyCtx, text: string): Promis
     })
   )
 
-  const assistantText = raw.trim()
+  let assistantText = result.text.trim()
+
+  // Post-procesa las tools de workspace (side effects del bot con binding):
+  // - createWorkspace → deja el workspace nuevo como activo.
+  // - switchWorkspace → aplica el cambio y confirma.
+  const toolResults = result.toolResults ?? []
+  const created = toolResults.find((r) => r.toolName === 'createWorkspace')
+  const switched = toolResults.find((r) => r.toolName === 'switchWorkspace')
+  type WorkspaceOut = { workspace?: { id: string; name: string; slug: string } }
+  const createdOut = created?.output as WorkspaceOut | undefined
+  const switchedOut = switched?.output as WorkspaceOut | undefined
+  if (createdOut?.workspace) {
+    const ws = createdOut.workspace
+    await setActiveWorkspace(ctx.chatId, ctx.tgUserId, ws.id)
+    assistantText = `✅ Workspace «${ws.name}» creado (\`${ws.slug}\`) y ahora es tu workspace activo.\n\n${assistantText}`.trim()
+  }
+  if (switchedOut?.workspace) {
+    const ws = switchedOut.workspace
+    await setActiveWorkspace(ctx.chatId, ctx.tgUserId, ws.id)
+    assistantText = `✅ Workspace activo: «${ws.name}» (\`${ws.slug}\`).\n\n${assistantText}`.trim()
+  }
+
   if (!assistantText) {
     await ctx.reply('Listo. Revisa tu canvas para ver los cambios.', { parse_mode: 'HTML' })
     return
@@ -656,6 +941,7 @@ function toReplyCtx(ctx: Context): TelegramReplyCtx {
   return {
     chatId: String(ctx.chat?.id ?? ''),
     tgUserId: String(ctx.from?.id ?? ''),
+    typing: () => ctx.replyWithChatAction('typing'),
     reply: (text, other) => ctx.reply(text, other),
   }
 }
@@ -675,10 +961,10 @@ export function toCallbackCtx(ctx: Context): TelegramCallbackCtx {
 }
 
 const START_TEXT =
-  'Hola.\nSoy el asistente de Canviagram.\nVincula este chat una sola vez en tu cuenta (web) → Telegram usando /link CODIGO. 1 vinculacion vale para todos tus workspaces.\n\nComandos:\n/start — ver bienvenida\n/help — ver ayuda\n/link CODIGO — vincula este chat a tu cuenta (una sola vez)\n/lista — tus workspaces (con botones)\n/usar NOMBRE — elige donde trabajar (o toca un boton)\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\n\nTip: escribe "usar nombre-del-workspace" para cambiar sin comandos ni revincular.\nEnvía un mensaje normal para crear nodos con IA.'
+  'Hola.\nSoy el asistente de Canviagram.\nVincula este chat una sola vez en tu cuenta (web) → Telegram usando /link CODIGO. 1 vinculacion vale para todos tus workspaces.\n\nComandos:\n/start — ver bienvenida\n/help — ver ayuda\n/link CODIGO — vincula este chat a tu cuenta (una sola vez)\n/lista — tus workspaces (con botones)\n/usar NOMBRE — elige donde trabajar (o toca un boton)\n/crear NOMBRE — crea un workspace y lo deja activo\n/renombrar NOMBRE — renombra el workspace activo\n/borrar — borra el workspace activo (con confirmacion)\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\n\nTip: escribe "usar nombre-del-workspace" para cambiar sin comandos ni revincular.\nEnvía un mensaje normal para crear nodos con IA.'
 
 const HELP_TEXT =
-  'Comandos:\n/start — ver bienvenida\n/help — ver ayuda\n/link CODIGO — vincula este chat a tu cuenta (una sola vez)\n/lista — tus workspaces (con botones)\n/usar NOMBRE — elige donde trabajar, con busqueda aproximada (sin NOMBRE muestra botones)\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\nEnvía un mensaje normal para crear nodos con IA.\n\n1 vinculacion vale para todos tus workspaces.\nCambia con /usar NOMBRE, con los botones de /lista o escribiendo "usar NOMBRE" (sin /unlink ni /link de nuevo).'
+  'Comandos:\n/start — ver bienvenida\n/help — ver ayuda\n/link CODIGO — vincula este chat a tu cuenta (una sola vez)\n/lista — tus workspaces (con botones)\n/usar NOMBRE — elige donde trabajar, con busqueda aproximada (sin NOMBRE muestra botones)\n/crear NOMBRE — crea un workspace (slug autogenerado) y lo deja activo\n/renombrar NOMBRE — renombra el workspace activo (el slug no cambia)\n/borrar — borra el workspace activo, solo el propietario, con confirmacion\n/estado — ver cuenta y workspace activo\n/unlink — desvincula este chat\nEnvía un mensaje normal para crear nodos con IA.\n\n1 vinculacion vale para todos tus workspaces.\nCambia con /usar NOMBRE, con los botones de /lista o escribiendo "usar NOMBRE" (sin /unlink ni /link de nuevo).'
 
 export function registerHandlers(bot: Bot): void {
   // bot.catch: log update_id + err.message (nunca el update completo) + reply genérico.
@@ -691,9 +977,14 @@ export function registerHandlers(bot: Bot): void {
     }
   })
 
-  // Botones inline "usar:<uuid>" (callback_data 41B).
+  // Botones inline: "usar:<uuid>" (switch), "wdel:<uuid>" (confirmar borrado),
+  // "wcnl:<uuid>" (cancelar borrado).
   bot.on('callback_query:data', async (ctx) => {
-    await handleWorkspaceCallback(toCallbackCtx(ctx))
+    const callbackCtx = toCallbackCtx(ctx)
+    const data = callbackCtx.callbackData
+    if (data.startsWith('wdel:')) return handleDeleteConfirmCallback(callbackCtx)
+    if (data.startsWith('wcnl:')) return handleDeleteCancelCallback(callbackCtx)
+    return handleWorkspaceCallback(callbackCtx)
   })
 
   bot.on('message:text', async (ctx) => {
@@ -724,7 +1015,7 @@ export function registerHandlers(bot: Bot): void {
             }
             const list = await listWorkspacesForUser(binding.userId)
             if (list.length === 0) {
-              await ctx.reply('Este chat ya está vinculado a tu cuenta, pero aún no tienes workspaces. Crea uno desde la web de Canviagram.', {
+              await ctx.reply('Este chat ya está vinculado a tu cuenta, pero aún no tienes workspaces. Crea uno con /crear NOMBRE.', {
                 parse_mode: 'HTML',
               })
               return
@@ -746,6 +1037,18 @@ export function registerHandlers(bot: Bot): void {
           await handleUse(replyCtx, parsed.args.join(' '))
           return
         }
+        case 'crear':
+        case 'nuevo':
+          await handleCreateWorkspace(replyCtx, parsed.args.join(' '))
+          return
+        case 'renombrar':
+        case 'editar':
+          await handleRenameWorkspace(replyCtx, parsed.args.join(' '))
+          return
+        case 'borrar':
+        case 'eliminar':
+          await handleDeleteWorkspace(replyCtx)
+          return
         case 'estado':
           await handleStatus(replyCtx)
           return

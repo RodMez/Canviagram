@@ -42,14 +42,17 @@ function loadEnvLocal() {
 
 loadEnvLocal()
 
-// 7 comandos de gestión publicados. /ayuda queda como alias oculto (no publicado)
-// pero sigue funcionando en el bot.
+// 10 comandos de gestión publicados. /ayuda queda como alias oculto (no publicado)
+// pero sigue funcionando en el bot. Borrar con confirmación → /borrar SLUG.
 const COMMANDS = [
   { command: 'start', description: 'Iniciar el bot y ver bienvenida' },
   { command: 'help', description: 'Ver ayuda y comandos' },
   { command: 'link', description: 'Vincular chat: /link CODIGO' },
   { command: 'lista', description: 'Listar tus workspaces' },
   { command: 'usar', description: 'Cambiar workspace: /usar SLUG' },
+  { command: 'crear', description: 'Crear workspace: /crear NOMBRE' },
+  { command: 'renombrar', description: 'Renombrar workspace activo: /renombrar NOMBRE' },
+  { command: 'borrar', description: 'Borrar workspace: /borrar SLUG (pide confirmación)' },
   { command: 'estado', description: 'Ver cuenta y workspace activo' },
   { command: 'unlink', description: 'Desvincular este chat' },
 ]
@@ -68,7 +71,7 @@ function validateCommands(commands) {
 
 function printHelp() {
   console.log(`Uso: node scripts/set-telegram-commands.mjs --set | --get | --clear | --info | --help
-  --set    Publica los 7 comandos de gestión via setMyCommands
+  --set    Publica los 10 comandos de gestión via setMyCommands
   --get    Lee los comandos actuales via getMyCommands y los imprime
   --clear  Borra los comandos publicados (setMyCommands con [])
   --info   Muestra esta ayuda y la lista a publicar (no llama a la API)
@@ -130,7 +133,7 @@ try {
   if (doInfo || doHelp) printHelp()
   if (doSet) {
     await call('setMyCommands', { commands: COMMANDS })
-    console.log('[telegram] Comandos publicados (7):', COMMANDS.map((c) => `/${c.command}`).join(', '))
+    console.log('[telegram] Comandos publicados (10):', COMMANDS.map((c) => `/${c.command}`).join(', '))
   }
   if (doGet) {
     const current = await call('getMyCommands', {})

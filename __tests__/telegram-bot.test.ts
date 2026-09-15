@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
 import { v4 as uuidv4 } from 'uuid'
 import { db } from '@/lib/db'
-import { users, workspaces } from '@/lib/db/schema'
+import { users, workspaces, workspaceMembers } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { ForbiddenError } from '@/lib/errors'
 
@@ -11,6 +11,7 @@ vi.mock('@/lib/telegram/chats', () => ({
   deleteBinding: vi.fn(),
   setActiveWorkspace: vi.fn(),
   resetActiveWorkspace: vi.fn(),
+  resetActiveWorkspacesByWorkspace: vi.fn(),
   touchLastActivity: vi.fn(),
 }))
 vi.mock('@/lib/ai/provider', () => ({
@@ -52,6 +53,12 @@ import {
   handleUseFuzzy,
   handleWorkspaceCallback,
   handleStatus,
+  handleCreateWorkspace,
+  handleRenameWorkspace,
+  handleDeleteWorkspace,
+  handleDeleteConfirmCallback,
+  handleDeleteCancelCallback,
+  buildDeleteConfirmKeyboard,
   escapeHtml,
   createTelegramBot,
   buildWorkspaceKeyboard,
@@ -61,7 +68,7 @@ import {
 } from '@/lib/telegram/bot'
 import { formatForTelegram } from '@/lib/telegram/format'
 import { createLinkCode, _clear as clearLinkStore } from '@/lib/telegram/link-store'
-import { findBinding, upsertBinding, deleteBinding, setActiveWorkspace, resetActiveWorkspace, touchLastActivity } from '@/lib/telegram/chats'
+import { findBinding, upsertBinding, deleteBinding, setActiveWorkspace, resetActiveWorkspace, resetActiveWorkspacesByWorkspace, touchLastActivity } from '@/lib/telegram/chats'
 import { isAIEnabled, getLLM, callWithFallback } from '@/lib/ai/provider'
 import { getWorkspaceGraph } from '@/lib/canvas-service'
 import { generateText } from 'ai'
@@ -73,6 +80,7 @@ const mUpsertBinding = vi.mocked(upsertBinding)
 const mDeleteBinding = vi.mocked(deleteBinding)
 const mSetActiveWorkspace = vi.mocked(setActiveWorkspace)
 const mResetActiveWorkspace = vi.mocked(resetActiveWorkspace)
+const mResetActiveWorkspacesByWorkspace = vi.mocked(resetActiveWorkspacesByWorkspace)
 const mIsAIEnabled = vi.mocked(isAIEnabled)
 const mGetLLM = vi.mocked(getLLM)
 const mCallWithFallback = vi.mocked(callWithFallback)
@@ -87,9 +95,14 @@ const ownerId = uuidv4()
 const wsId = uuidv4()
 const wsAlfaId = uuidv4()
 const wsBetaId = uuidv4()
+const otherOwnerId = uuidv4()
+const wsOtherId = uuidv4()
+const wsDelId = uuidv4()
 const wsSlug = `bot-ws-${wsId.slice(0, 8)}`
 const wsAlfaSlug = `proyecto-alfa-${wsAlfaId.slice(0, 8)}`
 const wsBetaSlug = `proyecto-beta-${wsBetaId.slice(0, 8)}`
+const wsOtherSlug = `otro-owner-${wsOtherId.slice(0, 8)}`
+const wsDelSlug = `borrar-me-${wsDelId.slice(0, 8)}`
 
 function bindingRow(activeWorkspaceId: string | null) {
   return {
@@ -129,9 +142,31 @@ describe('lib/telegram/bot', () => {
       name: 'Proyecto Beta',
       slug: wsBetaSlug,
     })
+    await db.insert(users).values({
+      id: otherOwnerId,
+      email: `bot-other-${otherOwnerId.slice(0, 8)}@example.com`,
+      passwordHash: 'hash',
+      displayName: 'Other Owner',
+      emailVerified: true,
+    })
+    await db.insert(workspaces).values({
+      id: wsOtherId,
+      ownerId: otherOwnerId,
+      name: 'Workspace Ajeno',
+      slug: wsOtherSlug,
+    })
+    await db.insert(workspaces).values({
+      id: wsDelId,
+      ownerId,
+      name: 'Borrar Me',
+      slug: wsDelSlug,
+    })
   })
 
   afterAll(async () => {
+    await db.delete(workspaces).where(eq(workspaces.id, wsDelId))
+    await db.delete(workspaces).where(eq(workspaces.id, wsOtherId))
+    await db.delete(users).where(eq(users.id, otherOwnerId))
     await db.delete(workspaces).where(eq(workspaces.id, wsBetaId))
     await db.delete(workspaces).where(eq(workspaces.id, wsAlfaId))
     await db.delete(workspaces).where(eq(workspaces.id, wsId))
@@ -183,6 +218,15 @@ describe('lib/telegram/bot', () => {
 
     it('/usar multi-palabra conserva todas las palabras (fuzzy)', () => {
       expect(parseCommand('/usar mi proyecto')).toEqual({ kind: 'command', name: 'usar', args: ['mi', 'proyecto'] })
+    })
+
+    it('comandos de workspace: /crear /nuevo /renombrar /editar /borrar /eliminar', () => {
+      expect(parseCommand('/crear Mi Proyecto')).toEqual({ kind: 'command', name: 'crear', args: ['Mi', 'Proyecto'] })
+      expect(parseCommand('/nuevo Alpha')).toEqual({ kind: 'command', name: 'nuevo', args: ['Alpha'] })
+      expect(parseCommand('/renombrar X')).toEqual({ kind: 'command', name: 'renombrar', args: ['X'] })
+      expect(parseCommand('/editar Z')).toEqual({ kind: 'command', name: 'editar', args: ['Z'] })
+      expect(parseCommand('/borrar')).toEqual({ kind: 'command', name: 'borrar', args: [] })
+      expect(parseCommand('/eliminar')).toEqual({ kind: 'command', name: 'eliminar', args: [] })
     })
   })
 
@@ -444,6 +488,124 @@ describe('lib/telegram/bot', () => {
     })
   })
 
+  describe('workspace CRUD vía comando (crear/renombrar/borrar)', () => {
+    it('buildDeleteConfirmKeyboard: botón sí (wdel) y cancelar (wcnl)', () => {
+      const kb = buildDeleteConfirmKeyboard(wsDelId)
+      const rows = kb.inline_keyboard.flat() as Array<{ text: string; callback_data: string }>
+      expect(rows.map((b) => b.callback_data)).toEqual([`wdel:${wsDelId}`, `wcnl:${wsDelId}`])
+      expect(rows[0]?.text).toContain('Sí, borrar')
+      expect(rows[1]?.text).toContain('Cancelar')
+    })
+
+    it('/crear crea el workspace (slug autogenerado), lo deja activo y confirma', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      const ctx = makeCtxStub()
+      await handleCreateWorkspace(ctx, 'Mi Proyecto Nuevo')
+      const setActiveCalls = mSetActiveWorkspace.mock.calls
+      expect(setActiveCalls).toHaveLength(1)
+      const [, , newWsId] = setActiveCalls[0]!
+      expect(typeof newWsId).toBe('string')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('Workspace <b>Mi Proyecto Nuevo</b> creado'),
+        { parse_mode: 'HTML' }
+      )
+      const created = await db.select().from(workspaces).where(eq(workspaces.id, newWsId)).get()
+      expect(created?.slug).toBeTruthy()
+      // Miembro owner creado junto con el workspace
+      const member = await db
+        .select().from(workspaceMembers)
+        .where(eq(workspaceMembers.workspaceId, newWsId))
+        .get()
+      expect(member?.role).toBe('owner')
+      await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, newWsId))
+      await db.delete(workspaces).where(eq(workspaces.id, newWsId))
+    })
+
+    it('/crear sin chat vinculado → pide /link y NO crea', async () => {
+      mFindBinding.mockResolvedValue(null)
+      const ctx = makeCtxStub()
+      await handleCreateWorkspace(ctx, 'X')
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('/link CÓDIGO'), { parse_mode: 'HTML' })
+      expect(mSetActiveWorkspace).not.toHaveBeenCalled()
+    })
+
+    it('/renombrar renombra el workspace activo y mantiene el slug', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsAlfaId))
+      const ctx = makeCtxStub()
+      await handleRenameWorkspace(ctx, 'Proyecto Alfa Renombrado')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('Workspace renombrado a <b>Proyecto Alfa Renombrado</b>'),
+        { parse_mode: 'HTML' }
+      )
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining(`<code>${wsAlfaSlug}</code>`),
+        { parse_mode: 'HTML' }
+      )
+      const row = await db.select().from(workspaces).where(eq(workspaces.id, wsAlfaId)).get()
+      expect(row?.name).toBe('Proyecto Alfa Renombrado')
+      expect(row?.slug).toBe(wsAlfaSlug)
+      await db.update(workspaces).set({ name: 'Proyecto Alfa' }).where(eq(workspaces.id, wsAlfaId))
+    })
+
+    it('/renombrar sin workspace activo → pide elegir', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(null))
+      const ctx = makeCtxStub()
+      await handleRenameWorkspace(ctx, 'X')
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('no tiene un workspace activo'), { parse_mode: 'HTML' })
+    })
+
+    it('/borrar con activo y owner → pide confirmación inline (sin borrar todavía)', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsDelId))
+      const ctx = makeCtxStub()
+      await handleDeleteWorkspace(ctx)
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('¿Borrar el workspace «Borrar Me»?'),
+        expect.objectContaining({ parse_mode: 'HTML' })
+      )
+      const markup = (ctx.reply.mock.calls[0]?.[1] as { reply_markup?: { inline_keyboard: Array<Array<{ callback_data: string }>> } })?.reply_markup
+      expect(markup?.inline_keyboard.flat().map((b) => b.callback_data)).toEqual([`wdel:${wsDelId}`, `wcnl:${wsDelId}`])
+      const stillThere = await db.select().from(workspaces).where(eq(workspaces.id, wsDelId)).get()
+      expect(stillThere).toBeDefined()
+    })
+
+    it('wcnl cancelar → answerCallback + reply y NO borra', async () => {
+      const ctx = makeCallbackCtxStub({ callbackData: `wcnl:${wsDelId}` })
+      await handleDeleteCancelCallback(ctx)
+      expect(ctx.answerCallback).toHaveBeenCalledWith('Cancelado')
+      expect(ctx.reply).toHaveBeenCalledWith('Listo, no se borró nada.', { parse_mode: 'HTML' })
+      const stillThere = await db.select().from(workspaces).where(eq(workspaces.id, wsDelId)).get()
+      expect(stillThere).toBeDefined()
+    })
+
+    it('wdel spoof (workspace ajeno) → answerCallback + rechazo y NO borra', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      const ctx = makeCallbackCtxStub({ callbackData: `wdel:${wsOtherId}` })
+      await handleDeleteConfirmCallback(ctx)
+      expect(ctx.answerCallback).toHaveBeenCalledWith('Solo el propietario puede borrar')
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Solo el propietario'), { parse_mode: 'HTML' })
+      const stillThere = await db.select().from(workspaces).where(eq(workspaces.id, wsOtherId)).get()
+      expect(stillThere).toBeDefined()
+    })
+
+    it('wdel malformado (no uuid) → answerCallback y NO borra', async () => {
+      const ctx = makeCallbackCtxStub({ callbackData: 'wdel:not-a-uuid' })
+      await handleDeleteConfirmCallback(ctx)
+      expect(ctx.answerCallback).toHaveBeenCalled()
+      expect(ctx.reply).not.toHaveBeenCalled()
+    })
+
+    it('wdel confirmación válida → borra (owner, slug correcto) y resetea activo del chat', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsDelId))
+      const ctx = makeCallbackCtxStub({ callbackData: `wdel:${wsDelId}` })
+      await handleDeleteConfirmCallback(ctx)
+      expect(ctx.answerCallback).toHaveBeenCalledWith('✅ Workspace borrado')
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('borrado'), { parse_mode: 'HTML' })
+      expect(mResetActiveWorkspacesByWorkspace).toHaveBeenCalledWith(wsDelId)
+      const gone = await db.select().from(workspaces).where(eq(workspaces.id, wsDelId)).get()
+      expect(gone).toBeUndefined()
+    })
+  })
+
   describe('handleWorkspaceCallback (§5)', () => {
     it('ok → setActive + answerCallback + reply con <b>name</b> + <code>slug</code>', async () => {
       mFindBinding.mockResolvedValue(bindingRow(wsId))
@@ -660,6 +822,123 @@ describe('lib/telegram/bot', () => {
       expect(vi.mocked(mResetActiveWorkspace)).toHaveBeenCalledWith(String(FIXED_CHAT_ID), String(FIXED_USER_ID))
       expect(mGenerateText).not.toHaveBeenCalled()
     })
+
+    it('borrado por NL "borra <nombre>" de un workspace propio → confirmación inline SIN LLM', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'borra alfa')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('¿Borrar el workspace «Proyecto Alfa»?'),
+        expect.objectContaining({ parse_mode: 'HTML' })
+      )
+      const markup = (ctx.reply.mock.calls[0]?.[1] as { reply_markup?: { inline_keyboard: Array<Array<{ callback_data: string }>> } })?.reply_markup
+      expect(markup?.inline_keyboard.flat().map((b) => b.callback_data)).toEqual([`wdel:${wsAlfaId}`, `wcnl:${wsAlfaId}`])
+      expect(mCallWithFallback).not.toHaveBeenCalled()
+      const stillThere = await db.select().from(workspaces).where(eq(workspaces.id, wsAlfaId)).get()
+      expect(stillThere).toBeDefined()
+    })
+
+    it('borrado por NL con objetivo ambiguo → pregunta precisar SIN LLM', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'borra proyecto')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('Encontré 2 workspaces'),
+        { parse_mode: 'HTML' }
+      )
+      expect(mCallWithFallback).not.toHaveBeenCalled()
+    })
+
+    it('borrado por NL sin match → error + /lista SIN LLM', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'borra zzz-no-existe')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('No encontré el workspace'),
+        { parse_mode: 'HTML' }
+      )
+      expect(mCallWithFallback).not.toHaveBeenCalled()
+    })
+
+    it('borrado por NL filler ("borra el workspace") → guía SIN LLM', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'borra el workspace')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('¿Cuál workspace quieres borrar?'),
+        { parse_mode: 'HTML' }
+      )
+      expect(mCallWithFallback).not.toHaveBeenCalled()
+    })
+
+    it('switch filler "cambia de workspace" → selector con botones SIN LLM', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'cambia de workspace')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('¿A cuál workspace quieres cambiar?'),
+        expect.objectContaining({ parse_mode: 'HTML' })
+      )
+      const markup = (ctx.reply.mock.calls[0]?.[1] as { reply_markup?: { inline_keyboard: unknown[] } })?.reply_markup
+      expect(markup?.inline_keyboard).toHaveLength(3)
+      expect(mSetActiveWorkspace).not.toHaveBeenCalled()
+      expect(mCallWithFallback).not.toHaveBeenCalled()
+    })
+
+    it('typing indicator antes del LLM en el flujo normal', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      mIsAIEnabled.mockReturnValue(true)
+      mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
+      mGenerateText.mockResolvedValue({ text: 'Listo' } as never)
+
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'crea una tarea')
+
+      expect(ctx.typing).toHaveBeenCalled()
+      expect(mCallWithFallback).toHaveBeenCalled()
+    })
+
+    it('createWorkspace vía tool → deja el nuevo workspace activo y antepone confirmación', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      mIsAIEnabled.mockReturnValue(true)
+      mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
+      mGenerateText.mockResolvedValue({
+        text: 'Listo.',
+        toolResults: [
+          { toolName: 'createWorkspace', output: { workspace: { id: 'ws-nuevo-x', name: 'Nuevo X', slug: 'nuevo-x' } } },
+        ],
+      } as never)
+
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'crea un workspace llamado Nuevo X')
+
+      expect(mSetActiveWorkspace).toHaveBeenCalledWith(String(FIXED_CHAT_ID), String(FIXED_USER_ID), 'ws-nuevo-x')
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('Workspace «Nuevo X» creado'),
+        { parse_mode: 'HTML' }
+      )
+    })
+
+    it('switchWorkspace vía tool → cambia el activo y confirma', async () => {
+      mFindBinding.mockResolvedValue(bindingRow(wsId))
+      mIsAIEnabled.mockReturnValue(true)
+      mGetWorkspaceGraph.mockResolvedValue({ nodes: [], edges: [] })
+      mGenerateText.mockResolvedValue({
+        text: 'Listo.',
+        toolResults: [
+          { toolName: 'switchWorkspace', output: { workspace: { id: wsAlfaId, name: 'Proyecto Alfa', slug: wsAlfaSlug } } },
+        ],
+      } as never)
+
+      const ctx = makeCtxStub()
+      await handleMessage(ctx, 'cámbiame a un workspace al que no reconozco')
+
+      expect(mSetActiveWorkspace).toHaveBeenCalledWith(String(FIXED_CHAT_ID), String(FIXED_USER_ID), wsAlfaId)
+      expect(ctx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('Workspace activo: «Proyecto Alfa»'),
+        { parse_mode: 'HTML' }
+      )
+    })
   })
 
   describe('escapeHtml', () => {
@@ -690,6 +969,7 @@ describe('lib/telegram/bot', () => {
     })
 
     it('replies estáticos (/start, /help, /link sin args, mensaje sin binding) no contienen tags HTML crudos', async () => {
+      mFindBinding.mockResolvedValue(null)
       const bot = createTelegramBot('dummy-token')
       const sentTexts: string[] = []
       bot.api.config.use((prev, method, payload) => {

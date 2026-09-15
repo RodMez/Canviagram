@@ -38,6 +38,7 @@ export function makeCtxStub(overrides?: { chatId?: string; tgUserId?: string }) 
   return {
     chatId: overrides?.chatId ?? String(FIXED_CHAT_ID),
     tgUserId: overrides?.tgUserId ?? String(FIXED_USER_ID),
+    typing: vi.fn().mockResolvedValue(undefined),
     reply: vi.fn().mockResolvedValue(undefined),
   }
 }
