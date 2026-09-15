@@ -12,6 +12,7 @@ import { PriorityBadge } from '@/components/board/PriorityBadge'
 import { EffortChip } from '@/components/board/EffortChip'
 import { AssigneeAvatar } from '@/components/board/AssigneeAvatar'
 import { useWorkspaceMembers } from '@/hooks/useWorkspaceMembers'
+import { isDemoWorkspace, resolveDemoAssigneeName } from '@/lib/demo/fixtures'
 import { mappedStatus } from '@/lib/canvas/board-columns'
 import { useBoardStore } from '@/store/board-store'
 import { patchNode } from '@/lib/canvas/node-mutations'
@@ -42,7 +43,8 @@ export function TaskNode({ data }: NodeProps<CanvasRFNode>) {
   }
 
   const assigneeName = domain.assigneeId
-    ? memberById.get(domain.assigneeId)?.displayName ?? null
+    ? (memberById.get(domain.assigneeId)?.displayName ??
+      (isDemoWorkspace(workspaceId) ? resolveDemoAssigneeName(domain.assigneeId) : null))
     : null
 
   const badge = editing ? (

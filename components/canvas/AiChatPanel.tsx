@@ -216,11 +216,26 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
   // Dedupe por toolCallId por turno: el snapshot del mensaje se re-emite en cada chunk.
   const appliedToolCallsRef = useRef<Set<string>>(new Set())
   const switchedRef = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const isDemo = isDemoWorkspace(workspaceId)
   const nodes = useCanvasStore(selectNodes)
   const edges = useCanvasStore(selectEdges)
   const applyLocalEvent = useCanvasStore((s) => s.applyLocalEvent)
+
+  // Demo landing (F7): prompts sugeridos clicables llenan el input.
+  // DemoLanding despacha `canviagram:demo-prompt` con el texto en `detail`.
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      const prompt = (e as CustomEvent<string>).detail
+      if (typeof prompt !== 'string' || !prompt) return
+      setInput(prompt)
+      // Espera al paint del bottom-sheet en móvil antes de enfocar.
+      requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
+    }
+    window.addEventListener('canviagram:demo-prompt', onPrompt)
+    return () => window.removeEventListener('canviagram:demo-prompt', onPrompt)
+  }, [])
 
   // Persistencia (F4.4): historial en servidor por usuario/workspace; el demo
   // guarda en localStorage. Hydrate al montar para que el chat no se pierda al recargar.
@@ -598,6 +613,7 @@ export function AiChatPanel({ workspaceId, sseStatus = 'connected' }: AiChatPane
         className="border-t border-border p-3"
       >
         <input
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Escribe un mensaje…"

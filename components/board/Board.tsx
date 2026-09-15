@@ -14,6 +14,7 @@ import { useBoardStore } from '@/store/board-store'
 import { useWorkspaceMembers } from '@/hooks/useWorkspaceMembers'
 import type { Node, NodeStatus, NodeType, Edge, BoardColumn as BoardColumnType } from '@/lib/db/schema'
 import { NODE_META } from '@/lib/canvas/node-meta'
+import { isDemoWorkspace, resolveDemoAssigneeName } from '@/lib/demo/fixtures'
 import { mappedStatus, groupTasksByColumn } from '@/lib/canvas/board-columns'
 import { orderForMoveToIndex } from '@/lib/canvas/board-move'
 import { deleteNodeFromWorkspace } from '@/lib/canvas/node-mutations'
@@ -178,8 +179,14 @@ export function Board({ workspaceId, onSwitchToCanvas }: BoardProps) {
   )
 
   const memberName = useCallback(
-    (userId: string) => memberById.get(userId)?.displayName ?? null,
-    [memberById]
+    (userId: string) => {
+      const real = memberById.get(userId)?.displayName ?? null
+      if (real) return real
+      // Demo: sin usuarios reales, el assigneeId ES el nombre (Emma/Liam/Oliver).
+      if (isDemoWorkspace(workspaceId)) return resolveDemoAssigneeName(userId)
+      return null
+    },
+    [memberById, workspaceId]
   )
 
   // Chip agregado por tipo (decisión F6.1 #8): notas/ideas/personas/recursos
