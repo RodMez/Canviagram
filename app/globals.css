@@ -3,44 +3,45 @@
 @tailwind utilities;
 
 /* ============================================================
-   Sistema de diseño Canviagram — Fase V (energía alta, bento)
+   Sistema de diseño Canviagram — F7 (identidad logo real)
    Tokens en tripletas RGB para que los modificadores de
    opacidad de Tailwind (bg-primary/80, border-border/50…)
    funcionen vía <alpha-value>. Identidad light única.
-   Paleta: rosa vibrante #E11D48 + azul acción #2563EB.
+   Paleta sampleada del logo real (gradiente petróleo→índigo):
+   primario #2B6B8F + acento teal #0E7E9C, fondos niebla #F2F7FA.
    ============================================================ */
 :root {
   color-scheme: light;
 
-  --background: 255 241 242;
-  --foreground: 39 39 42;
+  --background: 242 247 250;
+  --foreground: 23 42 56;
 
   --card: 255 255 255;
-  --card-foreground: 39 39 42;
+  --card-foreground: 23 42 56;
 
   --popover: 255 255 255;
-  --popover-foreground: 39 39 42;
+  --popover-foreground: 23 42 56;
 
-  --primary: 225 29 72;
+  --primary: 43 107 143;
   --primary-foreground: 255 255 255;
 
-  --secondary: 255 228 230;
-  --secondary-foreground: 136 19 55;
+  --secondary: 222 235 242;
+  --secondary-foreground: 38 80 105;
 
-  --muted: 255 228 230;
-  --muted-foreground: 82 82 91;
+  --muted: 229 239 245;
+  --muted-foreground: 82 106 124;
 
-  --accent: 37 99 235;
+  --accent: 14 126 156;
   --accent-foreground: 255 255 255;
 
   --destructive: 220 38 38;
   --destructive-foreground: 255 255 255;
 
-  --border: 254 205 211;
-  --input: 254 205 211;
-  --ring: 225 29 72;
+  --border: 199 220 231;
+  --input: 199 220 231;
+  --ring: 43 107 143;
 
-  --radius: 0.75rem;
+  --radius: 1rem;
 }
 
 @layer base {
@@ -83,6 +84,21 @@
     min-height: 2.75rem;
     min-width: 2.75rem;
   }
+
+  .scroll-mt-demo {
+    scroll-margin-top: 4.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ============================================================
@@ -106,4 +122,16 @@
 
 .react-flow__edge-path {
   stroke: rgb(var(--muted-foreground));
+}
+
+/* Demo landing (F7): en móvil el MiniMap tapa el canvas pequeño. */
+@media (max-width: 639px) {
+  .demo-canvas .react-flow__minimap {
+    display: none;
+  }
+
+  .demo-canvas .react-flow__controls {
+    transform: scale(0.85);
+    transform-origin: bottom right;
+  }
 }

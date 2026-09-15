@@ -6,11 +6,11 @@ import type { CanvasRFEdge } from '@/lib/canvas/rf'
 import type { EdgeType } from '@/lib/db/schema'
 import { EdgeTypePopup } from './EdgeTypePopup'
 
-// Colores y estilo por tipo de enlace (Fase V): depends_on en rosa de marca
+// Colores y estilo por tipo de enlace (Fase V): depends_on en rojo marca
 // (crítico), parent_of punteado en azul acción, related_to fino/gris.
 // NOTA: los tokens son tripletas RGB → siempre rgb(var(--x)), nunca var(--x).
 const EDGE_STYLE: Record<EdgeType, { stroke: string; strokeDasharray?: string; strokeWidth: number }> = {
-  depends_on: { stroke: '#E11D48', strokeWidth: 2.5 },
+  depends_on: { stroke: '#DC2626', strokeWidth: 2.5 },
   parent_of: { stroke: '#2563EB', strokeDasharray: '7 4', strokeWidth: 2 },
   related_to: { stroke: 'rgb(var(--muted-foreground))', strokeWidth: 1 },
 }

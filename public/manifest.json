@@ -1,16 +1,27 @@
 {
   "name": "Canviagram",
   "short_name": "Canviagram",
-  "description": "Mapas mentales y gestión de proyectos en canvas.",
-  "start_url": "/workspaces",
+  "description": "Canvas + IA para gestionar tu día: Tablero, Hoy y Telegram.",
+  "start_url": "/today",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#4f46e5",
+  "background_color": "#F2F7FA",
+  "theme_color": "#2B6B8F",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/brand/isotipo-192.png",
       "sizes": "192x192",
       "type": "image/png"
+    },
+    {
+      "src": "/brand/isotipo-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand/isotipo-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

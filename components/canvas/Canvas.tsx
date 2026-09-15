@@ -279,13 +279,13 @@ function CanvasInner({
         deleteKeyCode={['Backspace', 'Delete']}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#FECDD3" bgColor="#FFF7F8" />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#B9D4E2" bgColor="#F7FAFC" />
         <Controls />
         <MiniMap
           pannable
           zoomable
-          maskColor="rgba(255, 241, 242, 0.7)"
-          nodeColor={(n) => MINIMAP_COLORS[n.type as keyof typeof MINIMAP_COLORS] ?? '#E11D48'}
+          maskColor="rgba(242, 247, 250, 0.7)"
+          nodeColor={(n) => MINIMAP_COLORS[n.type as keyof typeof MINIMAP_COLORS] ?? '#2B6B8F'}
         />
       </ReactFlow>
       <CreateNodePopup
