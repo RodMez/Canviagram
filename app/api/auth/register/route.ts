@@ -28,6 +28,14 @@ export async function POST(req: Request) {
 
   const { email, password, displayName } = parsed.data
 
+  const headers = req.headers
+  const forwarded = headers.get('x-forwarded-for')
+  const realIp = headers.get('x-real-ip')
+  const ipRaw = (forwarded ? forwarded.split(',')[0]!.trim() : realIp?.trim()) || null
+  const ipAddress = ipRaw?.slice(0, 45) ?? null
+  const uaRaw = headers.get('user-agent') || null
+  const userAgent = uaRaw?.slice(0, 512) ?? null
+
   try {
     const existing = await db
       .select()
@@ -105,8 +113,8 @@ export async function POST(req: Request) {
           userId,
           tokenHash,
           expiresAt: expiresSession,
-          ipAddress: null,
-          userAgent: null,
+          ipAddress,
+          userAgent,
           createdAt: now,
         })
         .run()
