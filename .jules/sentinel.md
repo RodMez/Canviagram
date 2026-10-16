@@ -1,0 +1,4 @@
+## 2024-05-15 - User Enumeration via bcrypt Timing Oracle
+**Vulnerability:** A timing oracle in the login endpoint (`/api/auth/login`) allowed attackers to enumerate existing email addresses. The code attempted to mitigate this by calculating a dummy hash if the user wasn't found, but it used an invalid format string (`$2a$10$dummyhashdummyhashdummyhashdummyha`).
+**Learning:** `bcryptjs` performs early structural validation. If the provided hash string doesn't follow the valid base64 character set format (specifically the `[./A-Za-z0-9]` encoding), it will fail instantaneously without performing the expensive 10-round hashing. This negates the timing mitigation entirely.
+**Prevention:** Dummy hashes used for timing mitigations *must* be validly structured hashes (generated via a real `bcrypt.hashSync` call with a dummy password) to ensure the hashing algorithm actually executes.
