@@ -1,6 +1,7 @@
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+import { timingSafeEqual } from 'crypto'
 import { NextResponse } from 'next/server'
 import { env } from '@/lib/env'
 import { runReminderSweep } from '@/lib/reminders/engine'
@@ -15,13 +16,20 @@ import { runReminderSweep } from '@/lib/reminders/engine'
 
 const SWEEP_SECRET_HEADER = 'x-reminder-sweep-secret'
 
+function safeEqual(a: string | null | undefined, b: string): boolean {
+  if (!a) return false
+  const ba = Buffer.from(a, 'utf8')
+  const bb = Buffer.from(b, 'utf8')
+  return ba.length === bb.length && timingSafeEqual(ba, bb)
+}
+
 export async function POST(request: Request) {
   if (!env.REMINDER_SWEEP_SECRET) {
     return NextResponse.json({ error: 'Sweeper no configurado' }, { status: 503 })
   }
 
   const provided = request.headers.get(SWEEP_SECRET_HEADER)
-  if (provided !== env.REMINDER_SWEEP_SECRET) {
+  if (!safeEqual(provided, env.REMINDER_SWEEP_SECRET)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
