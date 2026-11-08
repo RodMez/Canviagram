@@ -30,8 +30,8 @@ export async function POST(req: Request) {
       .get()
 
     if (!user) {
-      // Mitigación timing oracle: hash dummy para igualar tiempo de verifyPassword
-      await verifyPassword('$2a$10$dummyhashdummyhashdummyhashdummyha', parsed.data.password).catch(() => {})
+      // Mitigación timing oracle: hash dummy matemáticamente válido para igualar tiempo de verifyPassword
+      await verifyPassword('$2a$10$/n3oTgCClL4XquM.6u/kFuPK5w0xkGHRbBrot3DlOhg75g9S21TyK', parsed.data.password).catch(() => {})
       return NextResponse.json({ error: 'Credenciales inválidas' }, { status: 401 })
     }
 
