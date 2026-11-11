@@ -2,3 +2,8 @@
 **Vulnerability:** The API endpoint `app/api/reminders/run/route.ts` compared the provided `x-reminder-sweep-secret` header against the expected secret (`env.REMINDER_SWEEP_SECRET`) using a simple string equality check (`!==`).
 **Learning:** Simple string equality comparison (`===` or `!==`) returns early upon finding the first mismatched character. This allows attackers to deduce the secret character by character by measuring the response time, which is known as a timing attack.
 **Prevention:** Use a timing-safe equality comparison function, such as `timingSafeEqual` from the `crypto` module (Node.js standard library), which compares strings in constant time. Make sure to check the lengths first before passing the buffers to `timingSafeEqual`, as it throws an error if lengths do not match.
+
+## 2024-10-09 - [Timing Attack Mitigation Bypass via Invalid Hash]
+**Vulnerability:** The authentication flow used a dummy hash (`$2a$10$dummyhashdummyhashdummyhashdummyha`) in `app/api/auth/login/route.ts` to mitigate timing attacks by comparing it to the user's input when a user was not found. However, this hash was structurally invalid for `bcrypt`.
+**Learning:** `bcrypt` (and similar libraries) parse the hash string before performing the expensive key derivation and comparison. If the provided hash string is structurally invalid, it will immediately fail or skip the expensive part, resulting in a significantly faster operation (e.g. 0.007ms instead of ~117ms) and re-introducing the timing vulnerability it intended to fix.
+**Prevention:** Always use a structurally valid hash format for dummy hashes in timing mitigations. Generating a real hash of a dummy string once and hardcoding it is an easy and safe way to obtain a valid dummy hash.
